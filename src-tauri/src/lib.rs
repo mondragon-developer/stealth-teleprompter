@@ -188,6 +188,13 @@ fn save_script(app: AppHandle, name: String, content: String) -> Result<ScriptIn
 }
 
 #[tauri::command]
+fn write_script(app: AppHandle, path: String, content: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    assert_in_scripts_dir(&app, &p)?;
+    fs::write(&p, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn delete_script(app: AppHandle, path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     assert_in_scripts_dir(&app, &p)?;
@@ -489,6 +496,7 @@ pub fn run() {
             list_scripts,
             read_script,
             save_script,
+            write_script,
             delete_script,
             load_settings,
             save_settings,

@@ -132,3 +132,18 @@ so plain pushes and local builds need no key.
 Voice-follow scrolling stays on the roadmap as an optional mode: WebView2
 ships no Web Speech API, so it needs a native speech engine and its own
 session.
+
+### 2026-07-24, fourth session
+
+v0.1.0 shipped publicly: tagged, built by CI, and released with signed
+update artifacts and latest.json, so the auto-updater has a live feed.
+The release page carries the unsigned-installer first-run notes.
+
+Two features landed after the release, queued for v0.2.0. A light theme:
+the Light / Dark button switches palettes, both checked against WCAG AA on
+the panel color, persisted like every other setting. And in-place editing:
+Edit turns the stage into an editor for the loaded script, Save (or
+Ctrl+Enter) writes straight back to the file through a new write_script
+command with the same scripts-folder path guard, Esc cancels, and playback
+controls stay locked while editing so a stray hotkey cannot scroll a
+half-edited script.

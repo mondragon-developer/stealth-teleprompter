@@ -58,6 +58,11 @@ Ghost mode makes the window click-through so your mouse reaches the slides
 underneath. Stealth toggles the capture invisibility if you ever want the
 prompter to show up in a recording.
 
+Edit changes the loaded script in place: the stage becomes an editor,
+Ctrl+Enter (or the Save button) writes it back to the file, Esc cancels.
+The Light / Dark button switches between the dark theme and a white one;
+both meet WCAG AA contrast.
+
 The controls bar also shows the estimated reading time left at the current
 speed, and the 3-2-1 button toggles a short countdown before auto-scroll
 starts so you are never caught mid-breath.

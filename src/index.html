@@ -26,6 +26,7 @@
         <div id="viewport">
           <div id="script-text"></div>
         </div>
+        <textarea id="editor" class="hidden" spellcheck="false" placeholder="Edit your script here. Ctrl+Enter saves, Esc cancels."></textarea>
         <div class="focus-line"></div>
         <div id="countdown" class="hidden"></div>
         <div id="ghost-banner" class="hidden">Click-through is on. Press <span id="ghost-hotkey">Ctrl+Alt+G</span> to get your mouse back.</div>
@@ -52,9 +53,12 @@
           <span class="label">Left</span>
           <span id="time-left" class="value time"></span>
         </div>
+        <button id="btn-edit" title="Edit this script in place" disabled>Edit</button>
+        <button id="btn-edit-cancel" class="hidden">Cancel</button>
         <button id="btn-count" title="Count 3-2-1 before auto-scroll starts">3-2-1</button>
         <button id="btn-ghost" title="Let clicks pass through this window.">Ghost</button>
         <button id="btn-stealth" class="active" title="Hide this window from screen capture">Stealth</button>
+        <button id="btn-theme" title="Switch color theme">Light</button>
       </footer>
 
       <aside id="sidebar" class="hidden">

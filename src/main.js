@@ -14,6 +14,7 @@ const DEFAULTS = {
   positions: {},
   countdown: true,
   hotkeys: {},
+  theme: "dark",
 };
 
 const DEFAULT_HOTKEYS = {
@@ -51,6 +52,8 @@ let scrollPending = false;
 let hotkeys = { bindings: { ...DEFAULT_HOTKEYS }, unavailable: [] };
 let recording = null;
 let countdownTimer = null;
+let editing = false;
+let currentRaw = "";
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -69,6 +72,8 @@ function applyUI() {
   $("speed-val").textContent = settings.speed;
   $("opacity").value = settings.opacity;
   $("btn-count").classList.toggle("active", !!settings.countdown);
+  document.body.classList.toggle("light", settings.theme === "light");
+  $("btn-theme").textContent = settings.theme === "light" ? "Dark" : "Light";
 }
 
 function mdLite(text) {
@@ -145,6 +150,7 @@ function cancelCountdown() {
 }
 
 function requestPlay() {
+  if (editing) return;
   if (countdownTimer) {
     cancelCountdown();
     return;
@@ -202,6 +208,52 @@ function setStealthUI(v) {
   const state = $("stealth-state");
   state.textContent = v ? "hidden from capture" : "VISIBLE to capture";
   state.classList.toggle("off", !v);
+}
+
+function setEditingUI(v) {
+  editing = v;
+  document.body.classList.toggle("editing", v);
+  $("editor").classList.toggle("hidden", !v);
+  const b = $("btn-edit");
+  b.textContent = v ? "Save" : "Edit";
+  b.classList.toggle("primary", v);
+  $("btn-edit-cancel").classList.toggle("hidden", !v);
+}
+
+function enterEdit() {
+  if (!current || editing) return;
+  cancelCountdown();
+  setPlaying(false);
+  savePosition();
+  $("editor").value = currentRaw;
+  setEditingUI(true);
+  $("editor").focus();
+}
+
+async function saveEdit() {
+  if (!current) return;
+  const text = $("editor").value;
+  try {
+    await invoke("write_script", { path: current.path, content: text });
+  } catch (err) {
+    $("script-title").textContent = "Could not save changes";
+    return;
+  }
+  currentRaw = text;
+  scriptText.innerHTML = mdLite(text);
+  $("script-title").textContent = current.name;
+  setEditingUI(false);
+  requestAnimationFrame(() => {
+    const frac = (settings.positions || {})[current.path] || 0;
+    viewport.scrollTop = frac * maxScroll();
+    updateCurrentLine();
+  });
+}
+
+function cancelEdit() {
+  if (!editing) return;
+  setEditingUI(false);
+  requestAnimationFrame(updateCurrentLine);
 }
 
 function prettyShortcut(s) {
@@ -336,6 +388,9 @@ async function openScript(s) {
     return;
   }
   current = s;
+  currentRaw = text;
+  if (editing) setEditingUI(false);
+  $("btn-edit").disabled = false;
   setPlaying(false);
   scriptText.innerHTML = mdLite(text);
   $("script-title").textContent = s.name;
@@ -384,6 +439,9 @@ function renderList() {
       }
       if (current && current.path === s.path) {
         current = null;
+        currentRaw = "";
+        if (editing) setEditingUI(false);
+        $("btn-edit").disabled = true;
         setPlaying(false);
         scriptText.innerHTML = "";
         $("script-title").textContent = "No script loaded";
@@ -454,10 +512,33 @@ function handleHotkey(action) {
 function wireControls() {
   $("btn-play").addEventListener("click", requestPlay);
   $("btn-restart").addEventListener("click", () => {
+    if (editing) return;
     cancelCountdown();
     setPlaying(false);
     viewport.scrollTop = 0;
     savePosition();
+  });
+  $("btn-edit").addEventListener("click", () => {
+    if (editing) {
+      saveEdit();
+    } else {
+      enterEdit();
+    }
+  });
+  $("btn-edit-cancel").addEventListener("click", cancelEdit);
+  $("editor").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    } else if (e.key === "Enter" && e.ctrlKey) {
+      e.preventDefault();
+      saveEdit();
+    }
+  });
+  $("btn-theme").addEventListener("click", () => {
+    settings.theme = settings.theme === "light" ? "dark" : "light";
+    applyUI();
+    saveSettingsSoon();
   });
   $("speed").addEventListener("input", (e) => setSpeed(Number(e.target.value)));
   $("opacity").addEventListener("input", (e) => {
