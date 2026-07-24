@@ -33,8 +33,10 @@ jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
 
 ## Next steps
 
-- [ ] Create the GitHub repo and push; confirm the build workflow goes
-      green on both Windows and macOS
+- [x] Create the GitHub repo
+      (https://github.com/mondragon-developer/stealth-teleprompter) and
+      push
+- [ ] Confirm the build workflow goes green on both Windows and macOS
 - [ ] Add the updater signing secrets before tagging a release
       (PowerShell):
       `gh secret set TAURI_SIGNING_PRIVATE_KEY --body (Get-Content "$env:USERPROFILE\.tauri\screen-script-updater.key" -Raw)`

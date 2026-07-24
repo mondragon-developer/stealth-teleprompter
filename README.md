@@ -34,7 +34,8 @@ npm run tauri build
 GitHub Actions builds installers automatically. Every push to master builds
 a Windows setup .exe and a universal macOS .dmg and keeps them for 14 days
 as workflow artifacts. Pushing a version tag (v0.1.0, v0.2.0, ...) builds
-the same installers and publishes them on the Releases page.
+the same installers and publishes them on the
+[Releases page](https://github.com/mondragon-developer/stealth-teleprompter/releases).
 
 The installers are not code-signed yet, so both systems warn on first run.
 On Windows, click More info, then Run anyway in the SmartScreen dialog. On

@@ -43,7 +43,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIzQUI2OUFENzgxOUQ5NApSV1NVbllIWG1yWTZBdnJjMDVqQ1g5dWs1eE9tczVmV3dYUFNFWU5uUDNwYTV3cmEyV2RhZFNDTgo=",
       "endpoints": [
-        "https://github.com/mondragon-developer/screen-script/releases/latest/download/latest.json"
+        "https://github.com/mondragon-developer/stealth-teleprompter/releases/latest/download/latest.json"
       ]
     }
   }

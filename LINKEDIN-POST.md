@@ -6,8 +6,8 @@ floating over your slides, the other half the live Zoom or Meet participant
 view where the prompter simply does not exist. That clip is the whole
 argument; the text only sets it up.
 
-Before posting: replace the repo link placeholder, and rewrite the "why"
-paragraph in your own words if you want a different personal angle.
+Before posting: rewrite the "why" paragraph in your own words if you want
+a different personal angle. The repo link is already filled in.
 
 ## Main post
 
@@ -49,7 +49,8 @@ can become the iPhone app next. Everything else is teleprompter craft.
 News anchors have used teleprompters for seventy years and nobody calls it
 cheating. This one just fits in a video call.
 
-Installers for Windows and macOS, and all the code: [repo link]
+Installers for Windows and macOS, and all the code:
+https://github.com/mondragon-developer/stealth-teleprompter
 
 If you present in your second language, or you just want your notes where
 your eyes already are, try it and tell me what to build next.
