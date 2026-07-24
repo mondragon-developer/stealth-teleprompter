@@ -38,9 +38,13 @@ What it does:
   slides underneath
 - Remembers your reading position in every script
 
-The stack: Rust and Tauri 2 with a vanilla JavaScript frontend. The magic
-is one Windows API call, SetWindowDisplayAffinity with
-WDA_EXCLUDEFROMCAPTURE. Everything else is teleprompter craft.
+The stack: Rust and Tauri 2 with a vanilla JavaScript frontend. Why Tauri
+and not Electron? It renders in the operating system's own webview instead
+of shipping a whole browser, so the installer is a few megabytes and memory
+stays low. The core is Rust, which puts the native window APIs one call
+away - the entire invisibility trick is a single flag,
+SetWindowDisplayAffinity with WDA_EXCLUDEFROMCAPTURE. And the same codebase
+can become the iPhone app next. Everything else is teleprompter craft.
 
 News anchors have used teleprompters for seventy years and nobody calls it
 cheating. This one just fits in a video call.

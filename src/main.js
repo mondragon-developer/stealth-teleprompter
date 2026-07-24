@@ -6,7 +6,37 @@ const $ = (id) => document.getElementById(id);
 const viewport = $("viewport");
 const scriptText = $("script-text");
 
-const DEFAULTS = { fontSize: 30, opacity: 85, speed: 60, lastScript: null, positions: {} };
+const DEFAULTS = {
+  fontSize: 30,
+  opacity: 85,
+  speed: 60,
+  lastScript: null,
+  positions: {},
+  countdown: true,
+  hotkeys: {},
+};
+
+const DEFAULT_HOTKEYS = {
+  "toggle-play": "ctrl+alt+Space",
+  "speed-up": "ctrl+alt+ArrowUp",
+  "speed-down": "ctrl+alt+ArrowDown",
+  "jump-back": "ctrl+alt+ArrowLeft",
+  "jump-forward": "ctrl+alt+ArrowRight",
+  "restart": "ctrl+alt+Home",
+  "toggle-visibility": "ctrl+alt+KeyH",
+  "toggle-click-through": "ctrl+alt+KeyG",
+};
+
+const HOTKEY_ACTIONS = [
+  ["toggle-play", "play / pause"],
+  ["speed-up", "faster"],
+  ["speed-down", "slower"],
+  ["jump-back", "jump back"],
+  ["jump-forward", "jump forward"],
+  ["restart", "back to top"],
+  ["toggle-visibility", "hide / show window"],
+  ["toggle-click-through", "click-through on / off"],
+];
 
 let settings = { ...DEFAULTS };
 let scripts = [];
@@ -18,6 +48,9 @@ let carry = 0;
 let lastTick = performance.now();
 let saveTimer = null;
 let scrollPending = false;
+let hotkeys = { bindings: { ...DEFAULT_HOTKEYS }, unavailable: [] };
+let recording = null;
+let countdownTimer = null;
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -35,6 +68,7 @@ function applyUI() {
   $("speed").value = settings.speed;
   $("speed-val").textContent = settings.speed;
   $("opacity").value = settings.opacity;
+  $("btn-count").classList.toggle("active", !!settings.countdown);
 }
 
 function mdLite(text) {
@@ -71,6 +105,16 @@ function savePosition() {
   saveSettingsSoon();
 }
 
+function renderTimeLeft() {
+  const el = $("time-left");
+  if (!current) {
+    el.textContent = "";
+    return;
+  }
+  const s = Math.max(0, Math.round((maxScroll() - viewport.scrollTop) / settings.speed));
+  el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 function updateCurrentLine() {
   const rect = viewport.getBoundingClientRect();
   const focusY = rect.top + rect.height * 0.33;
@@ -86,6 +130,7 @@ function updateCurrentLine() {
   for (const el of scriptText.children) {
     el.classList.toggle("current", el === currentEl);
   }
+  renderTimeLeft();
 }
 
 function setPlaying(v) {
@@ -93,16 +138,54 @@ function setPlaying(v) {
   $("btn-play").textContent = playing ? "Pause" : "Play";
 }
 
+function cancelCountdown() {
+  clearInterval(countdownTimer);
+  countdownTimer = null;
+  $("countdown").classList.add("hidden");
+}
+
+function requestPlay() {
+  if (countdownTimer) {
+    cancelCountdown();
+    return;
+  }
+  if (playing) {
+    setPlaying(false);
+    savePosition();
+    return;
+  }
+  if (!current) return;
+  if (!settings.countdown) {
+    setPlaying(true);
+    return;
+  }
+  let left = 3;
+  const el = $("countdown");
+  el.textContent = left;
+  el.classList.remove("hidden");
+  countdownTimer = setInterval(() => {
+    left -= 1;
+    if (left <= 0) {
+      cancelCountdown();
+      setPlaying(true);
+    } else {
+      el.textContent = left;
+    }
+  }, 1000);
+}
+
 function setSpeed(v) {
   settings.speed = clamp(Math.round(v), 10, 300);
   $("speed").value = settings.speed;
   $("speed-val").textContent = settings.speed;
+  renderTimeLeft();
   saveSettingsSoon();
 }
 
 function setFontSize(v) {
   settings.fontSize = clamp(v, 16, 64);
   applyUI();
+  requestAnimationFrame(renderTimeLeft);
   saveSettingsSoon();
 }
 
@@ -121,8 +204,130 @@ function setStealthUI(v) {
   state.classList.toggle("off", !v);
 }
 
+function prettyShortcut(s) {
+  const mods = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", super: "Win" };
+  return s
+    .split("+")
+    .map((part) => {
+      const m = mods[part.toLowerCase()];
+      if (m) return m;
+      if (part.startsWith("Key")) return part.slice(3);
+      if (part.startsWith("Digit")) return part.slice(5);
+      if (part.startsWith("Arrow")) return part.slice(5);
+      if (part.startsWith("Numpad")) return "Num" + part.slice(6);
+      return part;
+    })
+    .join("+");
+}
+
+function showHkError(msg) {
+  const el = $("hk-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function hideHkError() {
+  $("hk-error").classList.add("hidden");
+}
+
+function endRecord() {
+  recording = null;
+  window.removeEventListener("keydown", onRecordKey, true);
+}
+
+function onRecordKey(e) {
+  if (!recording) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(e.code)) return;
+  if (e.code === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    endRecord();
+    renderHotkeyList();
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+    showHkError("Include Ctrl, Alt or Win in the combo.");
+    return;
+  }
+  const parts = [];
+  if (e.ctrlKey) parts.push("ctrl");
+  if (e.altKey) parts.push("alt");
+  if (e.shiftKey) parts.push("shift");
+  if (e.metaKey) parts.push("super");
+  parts.push(e.code);
+  applyHotkey(recording, parts.join("+"));
+}
+
+function beginRecord(action, btn) {
+  if (recording) endRecord();
+  hideHkError();
+  recording = action;
+  btn.classList.add("recording");
+  btn.textContent = "press keys";
+  window.addEventListener("keydown", onRecordKey, true);
+}
+
+async function applyHotkey(action, combo) {
+  endRecord();
+  try {
+    await invoke("set_hotkey", { action, shortcut: combo });
+  } catch (err) {
+    showHkError(typeof err === "string" ? err : "Could not set the hotkey.");
+    await refreshHotkeys();
+    return;
+  }
+  hideHkError();
+  if (!settings.hotkeys) settings.hotkeys = {};
+  settings.hotkeys[action] = combo;
+  saveSettingsSoon();
+  await refreshHotkeys();
+}
+
+function renderHotkeyList() {
+  const wrap = $("hotkey-list");
+  wrap.innerHTML = "";
+  for (const [action, label] of HOTKEY_ACTIONS) {
+    const row = document.createElement("div");
+    row.className = "hk-row";
+    const name = document.createElement("span");
+    name.className = "hk-label";
+    name.textContent = label;
+    const btn = document.createElement("button");
+    btn.className = "hk-btn";
+    const combo = hotkeys.bindings[action] || DEFAULT_HOTKEYS[action];
+    btn.textContent = prettyShortcut(combo);
+    if (hotkeys.unavailable.includes(action)) {
+      btn.classList.add("failed");
+      btn.title = "Taken by another app. Click to rebind.";
+    } else {
+      btn.title = "Click, then press the new keys.";
+    }
+    btn.addEventListener("click", () => beginRecord(action, btn));
+    row.append(name, btn);
+    wrap.appendChild(row);
+  }
+}
+
+async function refreshHotkeys() {
+  try {
+    hotkeys = await invoke("get_hotkeys");
+  } catch (err) {
+    hotkeys = { bindings: { ...DEFAULT_HOTKEYS }, unavailable: [] };
+  }
+  renderHotkeyList();
+  const ghostCombo = hotkeys.bindings["toggle-click-through"] || DEFAULT_HOTKEYS["toggle-click-through"];
+  $("ghost-hotkey").textContent = prettyShortcut(ghostCombo);
+  const b = $("btn-ghost");
+  const dead = hotkeys.unavailable.includes("toggle-click-through");
+  b.disabled = dead;
+  b.title = dead
+    ? "Unavailable: another app owns " + prettyShortcut(ghostCombo) + ", which is needed to exit click-through mode. Rebind it in Keys."
+    : "Let clicks pass through this window. " + prettyShortcut(ghostCombo) + " restores your mouse.";
+}
+
 async function openScript(s) {
   savePosition();
+  cancelCountdown();
   let text;
   try {
     text = await invoke("read_script", { path: s.path });
@@ -182,6 +387,7 @@ function renderList() {
         setPlaying(false);
         scriptText.innerHTML = "";
         $("script-title").textContent = "No script loaded";
+        renderTimeLeft();
       }
       await refreshScripts();
     });
@@ -222,8 +428,7 @@ function jump(direction) {
 function handleHotkey(action) {
   switch (action) {
     case "toggle-play":
-      setPlaying(!playing);
-      if (!playing) savePosition();
+      requestPlay();
       break;
     case "speed-up":
       setSpeed(settings.speed + 10);
@@ -238,6 +443,7 @@ function handleHotkey(action) {
       jump(1);
       break;
     case "restart":
+      cancelCountdown();
       setPlaying(false);
       viewport.scrollTop = 0;
       savePosition();
@@ -246,11 +452,9 @@ function handleHotkey(action) {
 }
 
 function wireControls() {
-  $("btn-play").addEventListener("click", () => {
-    setPlaying(!playing);
-    if (!playing) savePosition();
-  });
+  $("btn-play").addEventListener("click", requestPlay);
   $("btn-restart").addEventListener("click", () => {
+    cancelCountdown();
     setPlaying(false);
     viewport.scrollTop = 0;
     savePosition();
@@ -263,6 +467,11 @@ function wireControls() {
   });
   $("font-minus").addEventListener("click", () => setFontSize(settings.fontSize - 2));
   $("font-plus").addEventListener("click", () => setFontSize(settings.fontSize + 2));
+  $("btn-count").addEventListener("click", () => {
+    settings.countdown = !settings.countdown;
+    $("btn-count").classList.toggle("active", !!settings.countdown);
+    saveSettingsSoon();
+  });
 
   $("btn-ghost").addEventListener("click", () => {
     invoke("set_click_through", { enabled: !ghost }).catch(() => {});
@@ -281,6 +490,9 @@ function wireControls() {
   $("btn-help").addEventListener("click", () => {
     $("sidebar").classList.add("hidden");
     $("help-pop").classList.toggle("hidden");
+    if ($("help-pop").classList.contains("hidden") && recording) {
+      endRecord();
+    }
   });
   $("btn-close").addEventListener("click", async () => {
     savePosition();
@@ -289,6 +501,31 @@ function wireControls() {
       await invoke("save_settings", { settings });
     } catch (err) {}
     appWindow.close();
+  });
+
+  $("hk-reset").addEventListener("click", async () => {
+    hideHkError();
+    if (recording) endRecord();
+    for (const [action] of HOTKEY_ACTIONS) {
+      try {
+        await invoke("set_hotkey", { action, shortcut: DEFAULT_HOTKEYS[action] });
+      } catch (err) {}
+    }
+    settings.hotkeys = {};
+    saveSettingsSoon();
+    await refreshHotkeys();
+  });
+
+  $("btn-update").addEventListener("click", async () => {
+    const b = $("btn-update");
+    b.disabled = true;
+    b.textContent = "Installing...";
+    try {
+      await invoke("install_update");
+    } catch (err) {
+      b.disabled = false;
+      b.textContent = "Update failed - retry";
+    }
   });
 
   $("btn-refresh").addEventListener("click", refreshScripts);
@@ -332,8 +569,7 @@ function wireControls() {
     if (tag === "INPUT" || tag === "TEXTAREA") return;
     if (e.code === "Space") {
       e.preventDefault();
-      setPlaying(!playing);
-      if (!playing) savePosition();
+      requestPlay();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       viewport.scrollTop += 60;
@@ -367,17 +603,13 @@ async function init() {
 
   await listen("hotkey", (e) => handleHotkey(e.payload));
   await listen("click-through-changed", (e) => setGhostUI(e.payload));
+  await listen("update-available", (e) => {
+    const b = $("btn-update");
+    b.textContent = "Update to v" + e.payload;
+    b.classList.remove("hidden");
+  });
 
-  try {
-    const unavailable = await invoke("get_unavailable_hotkeys");
-    if (unavailable.includes("toggle-click-through")) {
-      // Without the escape hotkey, enabling click-through would lock the
-      // user out of their own window.
-      const b = $("btn-ghost");
-      b.disabled = true;
-      b.title = "Unavailable: another app owns Ctrl+Alt+G, which is needed to exit click-through mode.";
-    }
-  } catch (err) {}
+  await refreshHotkeys();
 
   await refreshScripts();
   const last = scripts.find((s) => s.path === settings.lastScript);

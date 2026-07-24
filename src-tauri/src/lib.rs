@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,10 +11,33 @@ struct ClickThrough(AtomicBool);
 
 struct HotkeyStatus(Mutex<Vec<String>>);
 
+struct HotkeyBindings(Mutex<HashMap<String, String>>);
+
+struct HotkeyIds(Mutex<HashMap<u32, String>>);
+
+// Keys are JS KeyboardEvent.code names so the frontend recorder and the
+// global-shortcut parser round-trip the same strings.
+const DEFAULT_HOTKEYS: &[(&str, &str)] = &[
+    ("toggle-play", "ctrl+alt+Space"),
+    ("speed-up", "ctrl+alt+ArrowUp"),
+    ("speed-down", "ctrl+alt+ArrowDown"),
+    ("jump-back", "ctrl+alt+ArrowLeft"),
+    ("jump-forward", "ctrl+alt+ArrowRight"),
+    ("restart", "ctrl+alt+Home"),
+    ("toggle-visibility", "ctrl+alt+KeyH"),
+    ("toggle-click-through", "ctrl+alt+KeyG"),
+];
+
 #[derive(Serialize)]
 struct ScriptInfo {
     name: String,
     path: String,
+}
+
+#[derive(Serialize)]
+struct HotkeyConfig {
+    bindings: HashMap<String, String>,
+    unavailable: Vec<String>,
 }
 
 const WELCOME_SCRIPT: &str = r#"# Welcome to Screen Script
@@ -41,10 +65,14 @@ Ctrl+Alt+Left and Right jump back and forward. Ctrl+Alt+Home goes back to
 the top. Ctrl+Alt+H hides or shows this window. Ctrl+Alt+G toggles
 click-through mode.
 
+Those are only the defaults. Open Keys and click any combo to record your
+own, for example if another program on your machine already owns one of
+them.
+
 Click-through mode lets your mouse pass straight through this window to the
 slides underneath. While it is on you cannot click the controls, so press
-Ctrl+Alt+G again to get your mouse back. Ctrl+Alt+H also restores your
-mouse when it shows the window.
+the click-through hotkey again to get your mouse back. The hide/show hotkey
+also restores your mouse when it shows the window.
 
 The app remembers your reading position in every script.
 "#;
@@ -72,6 +100,26 @@ fn assert_in_scripts_dir(app: &AppHandle, path: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err("path is outside the scripts folder".into())
+    }
+}
+
+#[cfg(desktop)]
+fn toggle_main_window(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    if win.is_visible().unwrap_or(true) {
+        let _ = win.hide();
+    } else {
+        let _ = win.show();
+        let _ = win.set_focus();
+        // Failsafe escape from click-through, in case the ghost hotkey is
+        // unavailable or was rebound while ghost mode was on.
+        let ct = app.state::<ClickThrough>();
+        if ct.0.swap(false, Ordering::SeqCst) {
+            let _ = win.set_ignore_cursor_events(false);
+            let _ = app.emit("click-through-changed", false);
+        }
     }
 }
 
@@ -188,23 +236,129 @@ fn set_click_through(
 }
 
 #[tauri::command]
-fn get_unavailable_hotkeys(state: State<HotkeyStatus>) -> Vec<String> {
-    state.0.lock().unwrap().clone()
-}
-
-#[tauri::command]
 fn set_capture_protection(window: WebviewWindow, enabled: bool) -> Result<(), String> {
     window
         .set_content_protected(enabled)
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_hotkeys(bindings: State<HotkeyBindings>, status: State<HotkeyStatus>) -> HotkeyConfig {
+    HotkeyConfig {
+        bindings: bindings.0.lock().unwrap().clone(),
+        unavailable: status.0.lock().unwrap().clone(),
+    }
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn set_hotkey(
+    app: AppHandle,
+    bindings: State<HotkeyBindings>,
+    ids: State<HotkeyIds>,
+    status: State<HotkeyStatus>,
+    action: String,
+    shortcut: String,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+    let sc_new: Shortcut = shortcut
+        .parse()
+        .map_err(|_| "not a valid key combination".to_string())?;
+    let mut b = bindings.0.lock().unwrap();
+    let old = b.get(&action).cloned().ok_or("unknown action")?;
+    for (other, s) in b.iter() {
+        if other != &action {
+            if let Ok(sc) = s.parse::<Shortcut>() {
+                if sc.id() == sc_new.id() {
+                    return Err(format!("already used by {other}"));
+                }
+            }
+        }
+    }
+    let mut st = status.0.lock().unwrap();
+    let was_failed = st.contains(&action);
+    let sc_old: Option<Shortcut> = old.parse().ok();
+    if !was_failed {
+        if let Some(o) = sc_old {
+            let _ = app.global_shortcut().unregister(o);
+        }
+    }
+    match app.global_shortcut().register(sc_new) {
+        Ok(()) => {
+            let mut m = ids.0.lock().unwrap();
+            if let Some(o) = sc_old {
+                m.remove(&o.id());
+            }
+            m.insert(sc_new.id(), action.clone());
+            st.retain(|a| a != &action);
+            b.insert(action, shortcut);
+            Ok(())
+        }
+        Err(e) => {
+            if !was_failed {
+                if let Some(o) = sc_old {
+                    let _ = app.global_shortcut().register(o);
+                }
+            }
+            eprintln!("hotkey {shortcut} unavailable: {e}");
+            Err("that combination is taken by another app".into())
+        }
+    }
+}
+
+#[cfg(not(desktop))]
+#[tauri::command]
+fn set_hotkey(action: String, shortcut: String) -> Result<(), String> {
+    let _ = (action, shortcut);
+    Err("hotkeys are desktop only".into())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("no update available")?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    app.restart()
+}
+
+#[cfg(not(desktop))]
+#[tauri::command]
+async fn install_update() -> Result<(), String> {
+    Err("updates are desktop only".into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+
+    // Registered before window creation so the saved position and size are
+    // restored on launch. VISIBLE is excluded: quitting while hidden via the
+    // hide/show hotkey must not produce an app that starts invisible.
+    #[cfg(desktop)]
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::all()
+                    .difference(tauri_plugin_window_state::StateFlags::VISIBLE),
+            )
+            .build(),
+    );
+
+    builder
         .manage(ClickThrough(AtomicBool::new(false)))
         .manage(HotkeyStatus(Mutex::new(Vec::new())))
+        .manage(HotkeyBindings(Mutex::new(HashMap::new())))
+        .manage(HotkeyIds(Mutex::new(HashMap::new())))
         .setup(|app| {
             let dir = scripts_dir(app.handle())?;
             let has_scripts = fs::read_dir(&dir)
@@ -217,96 +371,117 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 use tauri_plugin_global_shortcut::{
-                    Builder as ShortcutBuilder, Code, Modifiers, Shortcut, ShortcutState,
+                    Builder as ShortcutBuilder, GlobalShortcutExt, Shortcut, ShortcutState,
                 };
-
-                let mods = Modifiers::CONTROL | Modifiers::ALT;
-                let play = Shortcut::new(Some(mods), Code::Space);
-                let faster = Shortcut::new(Some(mods), Code::ArrowUp);
-                let slower = Shortcut::new(Some(mods), Code::ArrowDown);
-                let back = Shortcut::new(Some(mods), Code::ArrowLeft);
-                let forward = Shortcut::new(Some(mods), Code::ArrowRight);
-                let top = Shortcut::new(Some(mods), Code::Home);
-                let visibility = Shortcut::new(Some(mods), Code::KeyH);
-                let ghost = Shortcut::new(Some(mods), Code::KeyG);
 
                 app.handle().plugin(
                     ShortcutBuilder::new()
-                        .with_handler(move |app, shortcut, event| {
+                        .with_handler(|app, shortcut, event| {
                             if event.state() != ShortcutState::Pressed {
                                 return;
                             }
-                            if shortcut == &visibility {
-                                if let Some(win) = app.get_webview_window("main") {
-                                    if win.is_visible().unwrap_or(true) {
-                                        let _ = win.hide();
-                                    } else {
-                                        let _ = win.show();
-                                        let _ = win.set_focus();
-                                        // Failsafe escape from click-through, in
-                                        // case the ghost hotkey is unavailable.
-                                        let ct = app.state::<ClickThrough>();
-                                        if ct.0.swap(false, Ordering::SeqCst) {
-                                            let _ = win.set_ignore_cursor_events(false);
-                                            let _ = app.emit("click-through-changed", false);
-                                        }
-                                    }
-                                }
-                                return;
-                            }
-                            if shortcut == &ghost {
-                                let state = app.state::<ClickThrough>();
-                                let enabled = !state.0.load(Ordering::SeqCst);
-                                state.0.store(enabled, Ordering::SeqCst);
-                                if let Some(win) = app.get_webview_window("main") {
-                                    let _ = win.set_ignore_cursor_events(enabled);
-                                }
-                                let _ = app.emit("click-through-changed", enabled);
-                                return;
-                            }
-                            let action = if shortcut == &play {
-                                "toggle-play"
-                            } else if shortcut == &faster {
-                                "speed-up"
-                            } else if shortcut == &slower {
-                                "speed-down"
-                            } else if shortcut == &back {
-                                "jump-back"
-                            } else if shortcut == &forward {
-                                "jump-forward"
-                            } else if shortcut == &top {
-                                "restart"
-                            } else {
-                                return;
+                            let action = {
+                                let ids = app.state::<HotkeyIds>();
+                                let map = ids.0.lock().unwrap();
+                                map.get(&shortcut.id()).cloned()
                             };
-                            let _ = app.emit("hotkey", action);
+                            let Some(action) = action else { return };
+                            match action.as_str() {
+                                "toggle-visibility" => toggle_main_window(app),
+                                "toggle-click-through" => {
+                                    let state = app.state::<ClickThrough>();
+                                    let enabled = !state.0.load(Ordering::SeqCst);
+                                    state.0.store(enabled, Ordering::SeqCst);
+                                    if let Some(win) = app.get_webview_window("main") {
+                                        let _ = win.set_ignore_cursor_events(enabled);
+                                    }
+                                    let _ = app.emit("click-through-changed", enabled);
+                                }
+                                _ => {
+                                    let _ = app.emit("hotkey", action);
+                                }
+                            }
                         })
                         .build(),
                 )?;
 
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                // Another app can own any of these combos; a conflict should
-                // cost one hotkey, not the whole launch (Ctrl+Alt+R and
-                // Ctrl+Alt+M were both taken on the first test machine). The
-                // frontend reads the failures to disable dependent features.
-                let entries = [
-                    (play, "toggle-play"),
-                    (faster, "speed-up"),
-                    (slower, "speed-down"),
-                    (back, "jump-back"),
-                    (forward, "jump-forward"),
-                    (top, "restart"),
-                    (visibility, "toggle-visibility"),
-                    (ghost, "toggle-click-through"),
-                ];
+                let mut bindings: Vec<(String, String)> = DEFAULT_HOTKEYS
+                    .iter()
+                    .map(|(a, s)| (a.to_string(), s.to_string()))
+                    .collect();
+                if let Ok(path) = settings_path(app.handle()) {
+                    if let Ok(raw) = fs::read_to_string(&path) {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                            if let Some(map) = v.get("hotkeys").and_then(|h| h.as_object()) {
+                                for (action, sc) in map {
+                                    if let Some(s) = sc.as_str() {
+                                        if s.parse::<Shortcut>().is_ok() {
+                                            if let Some(entry) =
+                                                bindings.iter_mut().find(|(a, _)| a == action)
+                                            {
+                                                entry.1 = s.to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // A conflict with another app costs one hotkey, not the whole
+                // launch (Ctrl+Alt+R and Ctrl+Alt+M were both taken on the
+                // first test machine). Failures land in HotkeyStatus so the
+                // frontend can flag them and offer rebinding.
                 let mut failed = Vec::new();
-                for (sc, action) in entries {
-                    if let Err(e) = app.global_shortcut().register(sc) {
-                        eprintln!("hotkey {sc:?} unavailable: {e}");
-                        failed.push(action.to_string());
+                let mut ids = HashMap::new();
+                for (action, s) in &bindings {
+                    let Ok(sc) = s.parse::<Shortcut>() else {
+                        failed.push(action.clone());
+                        continue;
+                    };
+                    match app.global_shortcut().register(sc) {
+                        Ok(()) => {
+                            ids.insert(sc.id(), action.clone());
+                        }
+                        Err(e) => {
+                            eprintln!("hotkey {s} unavailable: {e}");
+                            failed.push(action.clone());
+                        }
                     }
                 }
                 *app.state::<HotkeyStatus>().0.lock().unwrap() = failed;
+                *app.state::<HotkeyIds>().0.lock().unwrap() = ids;
+                *app.state::<HotkeyBindings>().0.lock().unwrap() = bindings.into_iter().collect();
+
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::TrayIconBuilder;
+                let toggle_item =
+                    MenuItem::with_id(app, "toggle", "Show / Hide", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
+                TrayIconBuilder::new()
+                    .icon(app.default_window_icon().unwrap().clone())
+                    .menu(&menu)
+                    .tooltip("Screen Script")
+                    .show_menu_on_left_click(true)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "toggle" => toggle_main_window(app),
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .build(app)?;
+
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use tauri_plugin_updater::UpdaterExt;
+                    let Ok(updater) = handle.updater() else { return };
+                    if let Ok(Some(update)) = updater.check().await {
+                        let _ = handle.emit("update-available", update.version.clone());
+                    }
+                });
             }
             Ok(())
         })
@@ -320,7 +495,9 @@ pub fn run() {
             open_scripts_folder,
             set_click_through,
             set_capture_protection,
-            get_unavailable_hotkeys
+            get_hotkeys,
+            set_hotkey,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -14,10 +14,10 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ""
+            args: "--config src-tauri/updater.conf.json"
             targets: ""
           - platform: macos-latest
-            args: "--target universal-apple-darwin"
+            args: "--target universal-apple-darwin --config src-tauri/updater.conf.json"
             targets: aarch64-apple-darwin,x86_64-apple-darwin
     runs-on: ${{ matrix.platform }}
     steps:
@@ -41,6 +41,8 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Screen Script ${{ github.ref_name }}

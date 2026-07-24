@@ -35,19 +35,21 @@ jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
 
 - [ ] Create the GitHub repo and push; confirm the build workflow goes
       green on both Windows and macOS
+- [ ] Add the updater signing secrets before tagging a release
+      (PowerShell):
+      `gh secret set TAURI_SIGNING_PRIVATE_KEY --body (Get-Content "$env:USERPROFILE\.tauri\screen-script-updater.key" -Raw)`
+      and `gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --body ""`
 - [ ] Tag v0.1.0 and confirm the release workflow publishes both
-      installers
+      installers plus latest.json for the auto-updater
 - [ ] Verify invisibility against a real screen share (Zoom, Meet, Teams,
       OBS) from a second participant's view
 - [ ] Rehearse a full presentation run: ghost mode over slides, speed
       changes mid-read
-- [ ] Custom app icon (still the default Tauri icon; needed before the
-      LinkedIn announcement)
 - [ ] Smoke test the installed app from the CI installer, not just dev
 - [ ] Record the split-screen demo clip for the LinkedIn post
-- [ ] Possible: per-script speed override, countdown before auto-scroll
-      starts, configurable hotkeys, tray icon, window position memory,
-      elapsed / remaining time readout, auto-updater
+- [ ] Possible: per-script speed override, mirror mode for beam-splitter
+      glass, voice-follow scrolling (speech recognition tracks your place;
+      needs a native engine, the WebView2 webview has no Web Speech API)
 
 ## Session log
 
@@ -99,3 +101,32 @@ local editor and tool state stay ignored, and
 the git author uses the GitHub noreply address. Drafted LINKEDIN-POST.md
 for the eventual announcement, including alternative hooks and posting
 notes; the split-screen demo clip is the missing piece.
+
+### 2026-07-24, third session
+
+Hotkeys became configurable in the app. The Keys popover now lists every
+action with its combo; clicking one records the next keypress, the backend
+re-registers it live (rolling back if the new combo is taken), and the
+binding persists in settings.json and is restored on launch. Failures show
+in red with a rebind hint, so a conflict like the Ctrl+Alt+R one from the
+first session is now a ten-second fix instead of a code change. A Reset
+defaults button undoes experiments.
+
+The rest of the v0.2 batch: real app icon generated from the dragon logo
+(background lifted to transparency, all platform sizes including the
+Android and iOS sets the port will want); a steel-blue palette matched to
+the logo and checked against WCAG AA contrast on the panel color, plus
+visible keyboard-focus outlines; estimated time-left readout in the
+controls; optional 3-2-1 countdown before auto-scroll; a tray icon with
+Show/Hide and Quit so the taskbar-hidden window can always be found;
+window position and size restored across launches (visibility deliberately
+excluded so quitting while hidden cannot produce an invisible start); and
+an auto-updater that checks GitHub releases on launch and shows an Update
+button in the title bar. Update artifacts are signed; the private key
+lives outside the repo in ~/.tauri and CI reads it from repository
+secrets. Release builds opt into updater artifacts via a config override
+so plain pushes and local builds need no key.
+
+Voice-follow scrolling stays on the roadmap as an optional mode: WebView2
+ships no Web Speech API, so it needs a native speech engine and its own
+session.

@@ -1,11 +1,19 @@
+/* Palette tuned to the logo's steel blue and checked against WCAG AA on the
+   solid panel color: text 16.7:1, dim 8.3:1, accent 7.1:1, warn 10:1, all
+   above the 4.5:1 small-text bar. The opacity slider can still lower real
+   contrast; these hold at the default 85% over mid backgrounds. */
 :root {
   --font-size: 30px;
   --panel-alpha: 0.85;
-  --panel-rgb: 15, 17, 21;
-  --text: #e8eaed;
-  --dim: rgba(232, 234, 237, 0.5);
-  --accent: #6ea8fe;
-  --warn: #ffb454;
+  --panel-rgb: 11, 22, 38;
+  --raised-rgb: 18, 32, 54;
+  --text: #f2f6fb;
+  --dim: #9fb1c4;
+  --accent: #5aa9e6;
+  --accent-rgb: 90, 169, 230;
+  --warn: #ffc266;
+  --ok: #7ddba3;
+  --error: #ff9d9d;
 }
 
 * {
@@ -42,7 +50,7 @@ textarea {
 }
 
 body.ghost .panel {
-  border-color: rgba(110, 168, 254, 0.55);
+  border-color: rgba(var(--accent-rgb), 0.55);
 }
 
 .hidden {
@@ -79,7 +87,7 @@ body.ghost .panel {
 
 #stealth-state {
   font-size: 11px;
-  color: #7ddba3;
+  color: var(--ok);
   white-space: nowrap;
 }
 
@@ -119,17 +127,24 @@ button:disabled:hover {
 }
 
 button.primary {
-  background: rgba(110, 168, 254, 0.22);
-  border-color: rgba(110, 168, 254, 0.5);
+  background: rgba(var(--accent-rgb), 0.22);
+  border-color: rgba(var(--accent-rgb), 0.5);
 }
 
 button.primary:hover {
-  background: rgba(110, 168, 254, 0.34);
+  background: rgba(var(--accent-rgb), 0.34);
 }
 
 button.active {
-  background: rgba(110, 168, 254, 0.28);
-  border-color: rgba(110, 168, 254, 0.65);
+  background: rgba(var(--accent-rgb), 0.28);
+  border-color: rgba(var(--accent-rgb), 0.65);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 #btn-close:hover {
@@ -195,7 +210,20 @@ button.active {
   top: 33%;
   left: 14px;
   right: 14px;
-  border-top: 1px solid rgba(110, 168, 254, 0.28);
+  border-top: 1px solid rgba(var(--accent-rgb), 0.45);
+  pointer-events: none;
+}
+
+#countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 110px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
 
@@ -205,8 +233,8 @@ button.active {
   left: 50%;
   transform: translateX(-50%);
   font-size: 12px;
-  background: rgba(110, 168, 254, 0.18);
-  border: 1px solid rgba(110, 168, 254, 0.45);
+  background: rgba(var(--accent-rgb), 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
   border-radius: 999px;
   padding: 4px 14px;
   white-space: nowrap;
@@ -243,6 +271,10 @@ button.active {
   font-variant-numeric: tabular-nums;
 }
 
+.control .value.time {
+  min-width: 34px;
+}
+
 input[type="range"] {
   width: 90px;
   accent-color: var(--accent);
@@ -256,7 +288,7 @@ input[type="range"] {
   right: 8px;
   bottom: 52px;
   width: 260px;
-  background: rgba(21, 24, 30, 0.97);
+  background: rgba(var(--raised-rgb), 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   display: flex;
@@ -304,7 +336,7 @@ input[type="range"] {
 }
 
 #script-list li.active {
-  background: rgba(110, 168, 254, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
 }
 
 #script-list li.empty {
@@ -326,38 +358,70 @@ input[type="range"] {
   font-size: 11px;
 }
 
-/* Help popover */
+/* Keys popover */
 
 #help-pop {
   position: absolute;
   top: 40px;
   right: 8px;
-  background: rgba(21, 24, 30, 0.97);
+  background: rgba(var(--raised-rgb), 0.97);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   font-size: 12px;
   z-index: 30;
 }
 
-#help-pop table {
-  border-collapse: collapse;
+#hotkey-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 260px;
 }
 
-#help-pop td {
-  padding: 2px 8px 2px 0;
+.hk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-#help-pop td:first-child {
-  color: var(--accent);
+.hk-label {
+  font-size: 12px;
+}
+
+.hk-btn {
   font-family: Consolas, monospace;
   font-size: 11px;
+  color: var(--accent);
+  min-width: 132px;
+  text-align: center;
+}
+
+.hk-btn.recording {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.25);
+  color: var(--text);
+}
+
+.hk-btn.failed {
+  border-color: rgba(255, 157, 157, 0.6);
+  color: var(--error);
 }
 
 #help-pop p {
   margin: 8px 0 0;
   color: var(--dim);
   font-size: 11px;
+  max-width: 280px;
+}
+
+#hk-error {
+  color: var(--error);
+}
+
+#hk-reset {
+  margin-top: 10px;
 }
 
 /* Paste modal */
@@ -375,7 +439,7 @@ input[type="range"] {
 .modal-card {
   width: min(520px, 88%);
   max-height: 88%;
-  background: rgba(21, 24, 30, 0.98);
+  background: rgba(var(--raised-rgb), 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   padding: 14px;
@@ -398,7 +462,6 @@ input[type="range"] {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 6px 9px;
-  outline: none;
 }
 
 .modal-card textarea {

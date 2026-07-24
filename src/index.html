@@ -15,6 +15,7 @@
           <span id="stealth-state">hidden from capture</span>
         </div>
         <div class="title-buttons">
+          <button id="btn-update" class="primary hidden">Update</button>
           <button id="btn-scripts">Scripts</button>
           <button id="btn-help">Keys</button>
           <button id="btn-close" title="Close">x</button>
@@ -26,7 +27,8 @@
           <div id="script-text"></div>
         </div>
         <div class="focus-line"></div>
-        <div id="ghost-banner" class="hidden">Click-through is on. Press Ctrl+Alt+G to get your mouse back.</div>
+        <div id="countdown" class="hidden"></div>
+        <div id="ghost-banner" class="hidden">Click-through is on. Press <span id="ghost-hotkey">Ctrl+Alt+G</span> to get your mouse back.</div>
       </main>
 
       <footer id="controls">
@@ -46,7 +48,12 @@
           <span class="label">Opacity</span>
           <input id="opacity" type="range" min="15" max="100" step="5" />
         </div>
-        <button id="btn-ghost" title="Let clicks pass through this window. Ctrl+Alt+G restores your mouse.">Ghost</button>
+        <div class="control" title="Estimated reading time left at the current speed">
+          <span class="label">Left</span>
+          <span id="time-left" class="value time"></span>
+        </div>
+        <button id="btn-count" title="Count 3-2-1 before auto-scroll starts">3-2-1</button>
+        <button id="btn-ghost" title="Let clicks pass through this window.">Ghost</button>
         <button id="btn-stealth" class="active" title="Hide this window from screen capture">Stealth</button>
       </footer>
 
@@ -63,17 +70,10 @@
       </aside>
 
       <div id="help-pop" class="hidden">
-        <table>
-          <tr><td>Ctrl+Alt+Space</td><td>play / pause</td></tr>
-          <tr><td>Ctrl+Alt+Up</td><td>faster</td></tr>
-          <tr><td>Ctrl+Alt+Down</td><td>slower</td></tr>
-          <tr><td>Ctrl+Alt+Left</td><td>jump back</td></tr>
-          <tr><td>Ctrl+Alt+Right</td><td>jump forward</td></tr>
-          <tr><td>Ctrl+Alt+Home</td><td>back to top</td></tr>
-          <tr><td>Ctrl+Alt+H</td><td>hide / show window</td></tr>
-          <tr><td>Ctrl+Alt+G</td><td>click-through on / off</td></tr>
-        </table>
-        <p>These work even while another app has the keyboard focus.</p>
+        <div id="hotkey-list"></div>
+        <p id="hk-hint">These work even while another app has the keyboard focus. Click a combo, then press new keys to change it. Esc cancels.</p>
+        <p id="hk-error" class="hidden"></p>
+        <button id="hk-reset">Reset defaults</button>
       </div>
 
       <div id="paste-modal" class="hidden">

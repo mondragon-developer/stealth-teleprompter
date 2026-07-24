@@ -1,5 +1,7 @@
 # Screen Script
 
+<img src="mdragon.png" alt="Screen Script logo" width="120" align="right" />
+
 A teleprompter for presentations that is invisible to screen capture. The
 window floats always-on-top on your monitor, but people watching your shared
 screen in Zoom, Meet, Teams or OBS cannot see it.
@@ -55,9 +57,21 @@ Ghost mode makes the window click-through so your mouse reaches the slides
 underneath. Stealth toggles the capture invisibility if you ever want the
 prompter to show up in a recording.
 
+The controls bar also shows the estimated reading time left at the current
+speed, and the 3-2-1 button toggles a short countdown before auto-scroll
+starts so you are never caught mid-breath.
+
+The app checks GitHub for new releases on launch; when one exists an Update
+button appears in the title bar and installs it in place.
+
 ## Global hotkeys
 
-These work while any application has focus:
+These work while any application has focus. All of them are editable: open
+Keys, click a combo, and press the new keys. If another program already
+owns a combo, the app keeps launching, marks that one key as taken, and
+lets you rebind it.
+
+Defaults:
 
 | Keys | Action |
 | --- | --- |
@@ -70,5 +84,6 @@ These work while any application has focus:
 | Ctrl+Alt+H | hide / show window |
 | Ctrl+Alt+G | click-through on / off |
 
-Note: the window is hidden from the taskbar, so if you hide it with
-Ctrl+Alt+H, the same hotkey is the way to bring it back.
+The window is hidden from the taskbar, but the tray icon and the hide/show
+hotkey can both bring it back. The window's position and size are restored
+on the next launch.
