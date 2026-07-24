@@ -9,9 +9,9 @@ Built with Tauri 2 (Rust + vanilla JS webview).
 ## How the invisibility works
 
 The window is flagged with content protection, which on Windows maps to
-SetWindowDisplayAffinity with WDA_EXCLUDEFROMCAPTURE. Screen capture APIs
-skip the window entirely, so it never appears in shared screens, recordings
-or screenshots. It only defeats software capture: a projector fed by display
+SetWindowDisplayAffinity with WDA_EXCLUDEFROMCAPTURE, and on macOS sets the
+window's sharing type to none. Screen capture APIs skip the window
+entirely, so it never appears in shared screens, recordings or screenshots. It only defeats software capture: a projector fed by display
 duplication or a phone camera pointed at the monitor will still show it.
 
 ## Running
@@ -25,6 +25,21 @@ To build an installer:
 
 ```
 npm run tauri build
+```
+
+## Download
+
+GitHub Actions builds installers automatically. Every push to master builds
+a Windows setup .exe and a universal macOS .dmg and keeps them for 14 days
+as workflow artifacts. Pushing a version tag (v0.1.0, v0.2.0, ...) builds
+the same installers and publishes them on the Releases page.
+
+The installers are not code-signed yet, so both systems warn on first run.
+On Windows, click More info, then Run anyway in the SmartScreen dialog. On
+macOS, clear the quarantine flag once after installing:
+
+```
+xattr -cr "/Applications/Screen Script.app"
 ```
 
 ## Usage

@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+            targets: ""
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Screen Script ${{ github.ref_name }}
+          releaseBody: |
+            Installers built by CI. They are not code-signed yet, so both
+            systems warn on first run.
+
+            Windows: download the setup .exe. If SmartScreen appears, click
+            More info, then Run anyway.
+
+            macOS: download the .dmg, drag Screen Script to Applications,
+            then clear the quarantine flag once in Terminal:
+
+                xattr -cr "/Applications/Screen Script.app"
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

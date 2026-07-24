@@ -33,15 +33,21 @@ jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
 
 ## Next steps
 
+- [ ] Create the GitHub repo and push; confirm the build workflow goes
+      green on both Windows and macOS
+- [ ] Tag v0.1.0 and confirm the release workflow publishes both
+      installers
 - [ ] Verify invisibility against a real screen share (Zoom, Meet, Teams,
       OBS) from a second participant's view
 - [ ] Rehearse a full presentation run: ghost mode over slides, speed
       changes mid-read
-- [ ] Custom app icon (still the default Tauri icon)
-- [ ] `npm run tauri build` release installer and a smoke test of the
-      installed app
+- [ ] Custom app icon (still the default Tauri icon; needed before the
+      LinkedIn announcement)
+- [ ] Smoke test the installed app from the CI installer, not just dev
+- [ ] Record the split-screen demo clip for the LinkedIn post
 - [ ] Possible: per-script speed override, countdown before auto-scroll
-      starts, configurable hotkeys
+      starts, configurable hotkeys, tray icon, window position memory,
+      elapsed / remaining time readout, auto-updater
 
 ## Session log
 
@@ -65,8 +71,31 @@ window; moved it to Ctrl+Alt+G, made the Ghost button self-disable when its
 hotkey is unavailable, and made Ctrl+Alt+H clear click-through as a
 failsafe.
 
-One tooling lesson: a background `tauri dev` instance held a lock on the
-built exe and broke the user's own `tauri dev` with "Access is denied"; the
-dev instance should be run from one place only.
+One tooling lesson: two `tauri dev` instances at once fight over the built
+exe and the second dies with "Access is denied"; run it from one place
+only.
 
-Confirmed working by the user at session end.
+Confirmed working at session end.
+
+### 2026-07-24, second session
+
+Set up distribution and groundwork for what comes next. Two GitHub Actions
+workflows: build.yml compiles the Windows installers (.exe and .msi) and a
+universal macOS .dmg on every push and keeps them as 14-day artifacts;
+release.yml runs on v* tags and publishes the same installers to a GitHub
+release, with unsigned-binary instructions in the release notes. Neither
+platform is code-signed yet.
+
+Wrote IOS.md capturing everything a future iPhone port needs: what carries
+over (the whole vanilla JS frontend, the Rust script/settings commands, the
+mobile entry point and desktop-gated shortcut plugin already in place),
+what has no iOS equivalent (global hotkeys, ghost mode, capture protection,
+which the phone-as-second-device use case does not need anyway), and the
+one cheap habit to keep: gate desktop-only features behind a platform
+check in init().
+
+Repo hygiene pass before going public: only source files are tracked,
+local editor and tool state stay ignored, and
+the git author uses the GitHub noreply address. Drafted LINKEDIN-POST.md
+for the eventual announcement, including alternative hooks and posting
+notes; the split-screen demo clip is the missing piece.
