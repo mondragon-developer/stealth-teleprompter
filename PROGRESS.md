@@ -36,12 +36,9 @@ jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
 - [x] Create the GitHub repo
       (https://github.com/mondragon-developer/stealth-teleprompter) and
       push
-- [ ] Confirm the build workflow goes green on both Windows and macOS
-- [ ] Add the updater signing secrets before tagging a release
-      (PowerShell):
-      `gh secret set TAURI_SIGNING_PRIVATE_KEY --body (Get-Content "$env:USERPROFILE\.tauri\screen-script-updater.key" -Raw)`
-      and `gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --body ""`
-- [ ] Tag v0.1.0 and confirm the release workflow publishes both
+- [x] Confirm the build workflow goes green on both Windows and macOS
+- [x] Add the updater signing secrets as repository secrets
+- [x] Tag v0.1.0 and confirm the release workflow publishes both
       installers plus latest.json for the auto-updater
 - [ ] Verify invisibility against a real screen share (Zoom, Meet, Teams,
       OBS) from a second participant's view
@@ -153,3 +150,24 @@ half-edited script.
 Released both as v0.2.0. The tag is also the first live test of the
 auto-updater: the installed v0.1.0 should discover it through latest.json
 and update itself in place.
+
+### 2026-07-24, fifth session
+
+Release-day closeout. The repo went live at
+github.com/mondragon-developer/stealth-teleprompter, both CI workflows
+came back green on their first runs, the update-signing key moved into
+repository secrets, and v0.1.0 published with all eight assets: the
+Windows setup exe and msi, the universal macOS dmg, their signatures, and
+latest.json for the update feed. The release notes carry the
+unsigned-installer first-run instructions.
+
+v0.2.0 followed the same day with the light theme and in-place editing.
+Version bumped across tauri.conf.json, Cargo.toml and package.json, tag
+pushed, release workflow publishing at session close. The installed
+v0.1.0 becomes the auto-updater's first real user the next time it
+launches after that build lands.
+
+The launch post copy grew to match the product: rebindable hotkeys,
+on-prompter editing in either theme, self-updating installs. Still ahead
+of the announcement: the second-device screen-share proof and the
+split-screen demo clip.
