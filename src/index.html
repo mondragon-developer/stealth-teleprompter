@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Script</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <div id="app" class="panel">
+      <header id="titlebar" data-tauri-drag-region>
+        <div class="title-left" data-tauri-drag-region>
+          <span id="script-title" data-tauri-drag-region>No script loaded</span>
+          <span id="stealth-state">hidden from capture</span>
+        </div>
+        <div class="title-buttons">
+          <button id="btn-scripts">Scripts</button>
+          <button id="btn-help">Keys</button>
+          <button id="btn-close" title="Close">x</button>
+        </div>
+      </header>
+
+      <main id="stage">
+        <div id="viewport">
+          <div id="script-text"></div>
+        </div>
+        <div class="focus-line"></div>
+        <div id="ghost-banner" class="hidden">Click-through is on. Press Ctrl+Alt+G to get your mouse back.</div>
+      </main>
+
+      <footer id="controls">
+        <button id="btn-play" class="primary">Play</button>
+        <button id="btn-restart" title="Back to top">Top</button>
+        <div class="control">
+          <span class="label">Speed</span>
+          <input id="speed" type="range" min="10" max="300" step="5" />
+          <span id="speed-val" class="value"></span>
+        </div>
+        <div class="control">
+          <span class="label">Text</span>
+          <button id="font-minus">-</button>
+          <button id="font-plus">+</button>
+        </div>
+        <div class="control">
+          <span class="label">Opacity</span>
+          <input id="opacity" type="range" min="15" max="100" step="5" />
+        </div>
+        <button id="btn-ghost" title="Let clicks pass through this window. Ctrl+Alt+G restores your mouse.">Ghost</button>
+        <button id="btn-stealth" class="active" title="Hide this window from screen capture">Stealth</button>
+      </footer>
+
+      <aside id="sidebar" class="hidden">
+        <div class="sidebar-head">
+          <span>Scripts</span>
+          <div class="sidebar-actions">
+            <button id="btn-new">Paste new</button>
+            <button id="btn-folder">Open folder</button>
+            <button id="btn-refresh">Refresh</button>
+          </div>
+        </div>
+        <ul id="script-list"></ul>
+      </aside>
+
+      <div id="help-pop" class="hidden">
+        <table>
+          <tr><td>Ctrl+Alt+Space</td><td>play / pause</td></tr>
+          <tr><td>Ctrl+Alt+Up</td><td>faster</td></tr>
+          <tr><td>Ctrl+Alt+Down</td><td>slower</td></tr>
+          <tr><td>Ctrl+Alt+Left</td><td>jump back</td></tr>
+          <tr><td>Ctrl+Alt+Right</td><td>jump forward</td></tr>
+          <tr><td>Ctrl+Alt+Home</td><td>back to top</td></tr>
+          <tr><td>Ctrl+Alt+H</td><td>hide / show window</td></tr>
+          <tr><td>Ctrl+Alt+G</td><td>click-through on / off</td></tr>
+        </table>
+        <p>These work even while another app has the keyboard focus.</p>
+      </div>
+
+      <div id="paste-modal" class="hidden">
+        <div class="modal-card">
+          <h3>New script</h3>
+          <input id="paste-name" type="text" placeholder="Script name" />
+          <textarea id="paste-content" placeholder="Paste your script here"></textarea>
+          <div class="modal-actions">
+            <button id="paste-cancel">Cancel</button>
+            <button id="paste-save" class="primary">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
