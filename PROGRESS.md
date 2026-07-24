@@ -48,6 +48,8 @@ jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
 - [ ] Rehearse a full presentation run: ghost mode over slides, speed
       changes mid-read
 - [ ] Smoke test the installed app from the CI installer, not just dev
+- [ ] Confirm the installed v0.1.0 shows the Update button and updates
+      itself to v0.2.0
 - [ ] Record the split-screen demo clip for the LinkedIn post
 - [ ] Possible: per-script speed override, mirror mode for beam-splitter
       glass, voice-follow scrolling (speech recognition tracks your place;
@@ -147,3 +149,7 @@ Ctrl+Enter) writes straight back to the file through a new write_script
 command with the same scripts-folder path guard, Esc cancels, and playback
 controls stay locked while editing so a stray hotkey cannot scroll a
 half-edited script.
+
+Released both as v0.2.0. The tag is also the first live test of the
+auto-updater: the installed v0.1.0 should discover it through latest.json
+and update itself in place.

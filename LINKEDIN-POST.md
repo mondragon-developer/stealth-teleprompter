@@ -33,10 +33,14 @@ What it does:
 - Floats over your slides, invisible to screen shares, recordings and
   screenshots
 - Auto-scrolls at your speaking pace, with live speed control
-- Global hotkeys that work while PowerPoint or the browser has focus
+- Global hotkeys that work while PowerPoint or the browser has focus, and
+  every one of them is rebindable if your machine already uses a combo
 - Ghost mode: your mouse clicks straight through the prompter to the
   slides underneath
-- Remembers your reading position in every script
+- Edit your script right on the prompter seconds before you start, in a
+  dark or light theme
+- Remembers your reading position in every script, and updates itself
+  from GitHub releases
 
 The stack: Rust and Tauri 2 with a vanilla JavaScript frontend. Why Tauri
 and not Electron? It renders in the operating system's own webview instead
