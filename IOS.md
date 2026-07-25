@@ -53,12 +53,17 @@ that shares its scripts and reading engine with the desktop app.
 ## Frontend changes to plan
 
 main.js currently assumes desktop unconditionally: it invokes
-`set_click_through`, `set_capture_protection` and `get_unavailable_hotkeys`
-and listens for `hotkey` events. Before the port, add one platform check
-early in `init()` (tauri-plugin-os, or a one-line `is_mobile` command in
-Rust) and gate the Ghost and Stealth buttons, the hotkey listener and the
-stealth-state label behind it. Keeping every future desktop-only feature
-behind that same check is the single cheapest habit for the port.
+`set_click_through`, `set_capture_protection`, `get_hotkeys` and
+`set_hotkey`, and listens for `hotkey` and `update-available` events.
+Before the port, add one platform check early in `init()`
+(tauri-plugin-os, or a one-line `is_mobile` command in Rust) and gate the
+Ghost and Stealth buttons, the Keys popover, the hotkey listener, the
+update button and the stealth-state label behind it. Keeping every future
+desktop-only feature behind that same check is the single cheapest habit
+for the port. The Rust side is already gated: global shortcuts, the tray
+icon, window-state restore and the updater all sit inside `#[cfg(desktop)]`
+with desktop-only dependencies, while the editor, themes, countdown and
+time-left readout are plain webview code that ports as-is.
 
 ## iOS-specific work the desktop app never needed
 

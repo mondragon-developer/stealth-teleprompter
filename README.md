@@ -13,7 +13,8 @@ Built with Tauri 2 (Rust + vanilla JS webview).
 The window is flagged with content protection, which on Windows maps to
 SetWindowDisplayAffinity with WDA_EXCLUDEFROMCAPTURE, and on macOS sets the
 window's sharing type to none. Screen capture APIs skip the window
-entirely, so it never appears in shared screens, recordings or screenshots. It only defeats software capture: a projector fed by display
+entirely, so it never appears in shared screens, recordings or
+screenshots. It only defeats software capture: a projector fed by display
 duplication or a phone camera pointed at the monitor will still show it.
 
 ## Running

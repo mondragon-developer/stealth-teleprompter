@@ -55,6 +55,11 @@ Open the Scripts panel and click Open folder. Drop your .txt or .md files
 there and click Refresh. You can also click Paste new to paste a script
 directly into the app.
 
+Need a last-minute change? Click Edit and this or any script becomes
+editable right on the prompter; Save writes it back to the file. The
+Light button switches to a white theme if you prefer reading dark on
+light.
+
 ## Hotkeys
 
 These work even while another app has the keyboard focus, so you can drive
