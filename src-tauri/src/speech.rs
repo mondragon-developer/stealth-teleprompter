@@ -375,6 +375,12 @@ mod imp {
                     }
                 },
                 move |e| {
+                    // WASAPI reports a dropped buffer (Xrun) or a reroute to a new
+                    // default device while the stream keeps running; stopping for
+                    // those would kill voice follow over a millisecond glitch.
+                    if matches!(e.kind(), cpal::ErrorKind::Xrun | cpal::ErrorKind::DeviceChanged) {
+                        return;
+                    }
                     let _ = app.emit(
                         "asr-error",
                         AsrText {
@@ -413,6 +419,28 @@ mod imp {
         (s.iter().map(|x| x * x).sum::<f32>() / s.len() as f32).sqrt()
     }
 
+    // Small models can loop on a phrase ("I have available. My intention is
+    // to help. My intention is to help."). The tail of a loop matches words
+    // already read, so voice follow would jump back; keep the first pass.
+    fn trim_repeats(text: &str) -> String {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let key = |w: &str| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        };
+        let norm: Vec<String> = words.iter().map(|w| key(w)).collect();
+        for start in 0..norm.len() {
+            for len in 3..=(norm.len() - start) / 2 {
+                if norm[start..start + len] == norm[start + len..start + 2 * len] {
+                    return words[..start + len].join(" ");
+                }
+            }
+        }
+        words.join(" ")
+    }
+
     fn transcribe(
         state: &mut WhisperState,
         audio: &[f32],
@@ -433,6 +461,15 @@ mod imp {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
+        // Whisper encodes a fixed 30 s window (1500 frames of 20 ms) however
+        // short the clip. Sizing the context to the clip made base ~6x
+        // faster on a 4 s window; below ~384 frames it starts looping.
+        let frames = audio.len() / 320;
+        params.set_audio_ctx((frames + 64).clamp(384, 1500) as i32);
+        // Fallback decoding retries at higher temperature and cost up to 2 s
+        // on a looping window; a looped or clipped result is cheaper to drop.
+        params.set_temperature_inc(0.0);
+        params.set_max_tokens((frames / 50 * 8 + 16) as i32);
         if !prompt.is_empty() {
             params.set_initial_prompt(prompt);
         }
@@ -442,7 +479,7 @@ mod imp {
             .filter_map(|s| s.to_str_lossy().ok().map(|c| c.into_owned()))
             .collect::<Vec<_>>()
             .join(" ");
-        let text = text.trim().to_string();
+        let text = trim_repeats(text.trim());
         // Whisper marks non-speech with bracketed tags like [BLANK_AUDIO].
         if text.is_empty() || (text.starts_with('[') && text.ends_with(']')) {
             None

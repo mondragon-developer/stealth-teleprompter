@@ -10,6 +10,7 @@ const scriptText = $("script-text");
 const DEFAULTS = {
   fontSize: 30,
   opacity: 85,
+  textContrast: 0,
   speed: 60,
   lastScript: null,
   positions: {},
@@ -105,10 +106,12 @@ function applyUI() {
   const root = document.documentElement.style;
   root.setProperty("--font-size", settings.fontSize + "px");
   root.setProperty("--panel-alpha", settings.opacity / 100);
+  root.setProperty("--text-strength", settings.textContrast + "%");
   $("speed").value = speedToSlider(settings.speed);
   $("speed-val").textContent = settings.speed;
   $("btn-words").classList.toggle("active", !!settings.wordHighlight);
   $("opacity").value = settings.opacity;
+  $("contrast").value = settings.textContrast;
   $("btn-count").classList.toggle("active", !!settings.countdown);
   document.body.classList.toggle("light", settings.theme === "light");
   $("btn-theme").textContent = settings.theme === "light" ? "Dark" : "Light";
@@ -676,6 +679,27 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+// Lands the focus line inside the clicked word's slice of its line, so
+// wordFromFocus maps back to that exact word rather than the line start.
+function jumpToWord(i) {
+  if (layoutDirty) buildLayout();
+  const l = lineOfWord(i);
+  if (!l) return;
+  const frac = (i - l.first + 0.5) / (l.last - l.first + 1);
+  const y = l.top + frac * (l.bottom - l.top);
+  if (voiceOn) {
+    // Voice mode scrolls toward wordIdx itself; manualUntil would make the
+    // scroll handler re-derive the word from the focus line mid-glide.
+    manualUntil = 0;
+    wordIdx = i;
+    showWord(i);
+    sendVoiceContextSoon();
+  } else {
+    viewport.scrollTop = clamp(y - focusOffset(), 0, maxScroll());
+  }
+  savePosition();
+}
+
 function jump(direction) {
   markManual();
   viewport.scrollBy({ top: direction * viewport.clientHeight * 0.7, behavior: "smooth" });
@@ -1183,6 +1207,11 @@ function wireControls() {
     applyUI();
     saveSettingsSoon();
   });
+  $("contrast").addEventListener("input", (e) => {
+    settings.textContrast = Number(e.target.value);
+    applyUI();
+    saveSettingsSoon();
+  });
   $("font-minus").addEventListener("click", () => setFontSize(settings.fontSize - 2));
   $("font-plus").addEventListener("click", () => setFontSize(settings.fontSize + 2));
   $("btn-count").addEventListener("click", () => {
@@ -1274,6 +1303,14 @@ function wireControls() {
   });
 
   viewport.addEventListener("wheel", markManual, { passive: true });
+  scriptText.addEventListener("click", (e) => {
+    // A drag that selected text is a copy, not a jump.
+    if (String(window.getSelection())) return;
+    const w = e.target.closest(".w");
+    if (!w) return;
+    const i = words.indexOf(w);
+    if (i >= 0) jumpToWord(i);
+  });
   new ResizeObserver(() => {
     layoutDirty = true;
     requestAnimationFrame(updateCurrentLine);

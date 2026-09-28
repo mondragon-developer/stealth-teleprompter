@@ -5,6 +5,7 @@
 :root {
   --font-size: 30px;
   --panel-alpha: 0.85;
+  --text-strength: 0%;
   --panel-rgb: 11, 22, 38;
   --raised-rgb: 18, 32, 54;
   --text: #f2f6fb;
@@ -224,13 +225,19 @@ textarea:focus-visible {
   margin: 0 0 0.85em;
   font-size: var(--font-size);
   line-height: 1.55;
-  color: var(--dim);
+  /* Contrast slider: 0% keeps the dimmed look, 100% renders every line in
+     the full current color, for reading over busy or bright backdrops. */
+  color: color-mix(in srgb, var(--current) var(--text-strength), var(--dim));
   transition: color 0.25s ease;
 }
 
 #script-text h2 {
   font-size: calc(var(--font-size) * 1.1);
   font-weight: 700;
+}
+
+#script-text .w {
+  cursor: pointer;
 }
 
 #script-text .current {
