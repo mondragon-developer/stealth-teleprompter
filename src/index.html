@@ -16,6 +16,7 @@
         </div>
         <div class="title-buttons">
           <button id="btn-update" class="primary hidden">Update</button>
+          <button id="btn-answers" title="Suggested answers from an AI model">Answers</button>
           <button id="btn-scripts">Scripts</button>
           <button id="btn-help">Keys</button>
           <button id="btn-close" title="Close">x</button>
@@ -29,6 +30,54 @@
         <textarea id="editor" class="hidden" spellcheck="false" placeholder="Edit your script here. Ctrl+Enter saves, Esc cancels."></textarea>
         <div class="focus-line"></div>
         <div id="countdown" class="hidden"></div>
+        <div id="voice-status" class="hidden"></div>
+        <aside id="answer-pane" class="hidden">
+          <div class="pane-head">
+            <span>Answers</span>
+            <div class="pane-actions">
+              <button id="btn-listen" title="Transcribe what others say (system audio) so the model can see their question">Listen</button>
+              <button id="btn-ai-setup" title="Model, provider and notes">Setup</button>
+            </div>
+          </div>
+          <div id="heard" class="hidden"></div>
+          <div class="ask-row">
+            <input id="ask-input" type="text" placeholder="Type a question, or leave empty to use what was heard" />
+            <button id="btn-ask" class="primary">Answer</button>
+          </div>
+          <div id="answer-out" aria-live="polite"></div>
+          <div id="ai-setup" class="hidden">
+            <label>Provider
+              <select id="ai-provider">
+                <option value="lmstudio">LM Studio (local)</option>
+                <option value="claude">Claude</option>
+                <option value="openai">ChatGPT (OpenAI)</option>
+                <option value="kimi">Kimi (Moonshot)</option>
+                <option value="custom">Other OpenAI-compatible</option>
+              </select>
+            </label>
+            <label>Server URL <input id="ai-url" type="text" spellcheck="false" /></label>
+            <label>Model
+              <span class="inline">
+                <input id="ai-model" type="text" list="ai-model-list" spellcheck="false" />
+                <button id="btn-ai-models" title="Load the models this provider offers">List</button>
+              </span>
+            </label>
+            <datalist id="ai-model-list"></datalist>
+            <label>API key
+              <span class="inline">
+                <input id="ai-key" type="password" spellcheck="false" placeholder="not needed for LM Studio" />
+                <button id="btn-ai-key">Save</button>
+              </span>
+            </label>
+            <p id="ai-key-state" class="note"></p>
+            <label class="check"><input id="ai-include-script" type="checkbox" /> Send the current script as context</label>
+            <label>Notes for the model (facts, numbers, likely questions)
+              <textarea id="ai-notes" spellcheck="false"></textarea>
+            </label>
+            <p class="note">Listen transcribes the meeting audio on this computer. Answering sends the recent transcript, your notes and, if checked, the script to the provider above. Let people know when you transcribe them.</p>
+            <button id="btn-transcript-clear">Clear heard transcript</button>
+          </div>
+        </aside>
         <div id="ghost-banner" class="hidden">Click-through is on. Press <span id="ghost-hotkey">Ctrl+Alt+G</span> to get your mouse back.</div>
       </main>
 
@@ -37,7 +86,7 @@
         <button id="btn-restart" title="Back to top">Top</button>
         <div class="control">
           <span class="label">Speed</span>
-          <input id="speed" type="range" min="10" max="300" step="5" />
+          <input id="speed" type="range" min="0" max="1000" step="1" />
           <span id="speed-val" class="value"></span>
         </div>
         <div class="control">
@@ -53,6 +102,8 @@
           <span class="label">Left</span>
           <span id="time-left" class="value time"></span>
         </div>
+        <button id="btn-words" title="Highlight the word you should be reading">Words</button>
+        <button id="btn-voice" title="Follow your voice: the script scrolls as you read it aloud">Voice</button>
         <button id="btn-edit" title="Edit this script in place" disabled>Edit</button>
         <button id="btn-edit-cancel" class="hidden">Cancel</button>
         <button id="btn-count" title="Count 3-2-1 before auto-scroll starts">3-2-1</button>
@@ -78,6 +129,30 @@
         <p id="hk-hint">These work even while another app has the keyboard focus. Click a combo, then press new keys to change it. Esc cancels.</p>
         <p id="hk-error" class="hidden"></p>
         <button id="hk-reset">Reset defaults</button>
+        <div id="speech-setup">
+          <h4>Speech recognition</h4>
+          <p>Voice and Listen run a Whisper model on this computer; no audio leaves it.</p>
+          <div class="hk-row">
+            <span class="hk-label">Model</span>
+            <select id="asr-model">
+              <option value="tiny">Tiny - 75 MB, fastest</option>
+              <option value="base">Base - 142 MB, balanced</option>
+              <option value="small">Small - 466 MB, most accurate</option>
+            </select>
+          </div>
+          <div class="hk-row">
+            <span class="hk-label">Language</span>
+            <select id="asr-lang">
+              <option value="auto">Detect</option>
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+            </select>
+          </div>
+          <div class="hk-row">
+            <span id="asr-state" class="hk-label"></span>
+            <button id="btn-asr-download">Download</button>
+          </div>
+        </div>
       </div>
 
       <div id="paste-modal" class="hidden">

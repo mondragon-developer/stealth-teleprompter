@@ -41,6 +41,12 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # whisper-rs generates its bindings with bindgen, which needs libclang;
+      # the Windows runner image ships LLVM but not on the search path.
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
       - run: npm ci
 
       - run: npm run tauri -- ${{ matrix.args }}

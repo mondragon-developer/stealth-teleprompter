@@ -1,3 +1,6 @@
+mod llm;
+mod speech;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +29,8 @@ const DEFAULT_HOTKEYS: &[(&str, &str)] = &[
     ("restart", "ctrl+alt+Home"),
     ("toggle-visibility", "ctrl+alt+KeyH"),
     ("toggle-click-through", "ctrl+alt+KeyG"),
+    ("toggle-voice", "ctrl+alt+KeyV"),
+    ("answer", "ctrl+alt+KeyQ"),
 ];
 
 #[derive(Serialize)]
@@ -47,7 +52,20 @@ is on, Zoom, Meet, Teams and OBS viewers cannot see it, even when you share
 your whole screen.
 
 Press Play or Ctrl+Alt+Space to start the auto-scroll. Tune the speed with
-the slider, or with Ctrl+Alt+Up and Ctrl+Alt+Down while you talk.
+the slider, or with Ctrl+Alt+Up and Ctrl+Alt+Down while you talk. The
+steps get finer at the slow end, all the way down to zero. Words
+highlights the word under the reading line as the text moves.
+
+Prefer to set the pace with your voice? Click Voice (Ctrl+Alt+V) and
+read aloud: the script follows you, and pauses when you stop. The speech
+model runs on this computer; download it once from Keys.
+
+## Answers
+
+Click Answers to open a side panel that suggests replies when someone
+asks you a question. Listen transcribes the meeting audio, and Answer
+(Ctrl+Alt+Q) sends the question to the model you pick in Setup: LM Studio
+on this computer, or Claude, ChatGPT or Kimi with your own API key.
 
 ## Adding your scripts
 
@@ -351,6 +369,10 @@ async fn install_update() -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // reqwest is built without a bundled TLS provider (matching the updater
+    // plugin), so one must be installed before the first HTTPS client.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
 
     // Registered before window creation so the saved position and size are
@@ -371,6 +393,7 @@ pub fn run() {
         .manage(HotkeyStatus(Mutex::new(Vec::new())))
         .manage(HotkeyBindings(Mutex::new(HashMap::new())))
         .manage(HotkeyIds(Mutex::new(HashMap::new())))
+        .manage(speech::Speech::default())
         .setup(|app| {
             let dir = scripts_dir(app.handle())?;
             let has_scripts = fs::read_dir(&dir)
@@ -510,7 +533,21 @@ pub fn run() {
             set_capture_protection,
             get_hotkeys,
             set_hotkey,
-            install_update
+            install_update,
+            speech::speech_supported,
+            speech::model_status,
+            speech::download_model,
+            speech::voice_context,
+            speech::voice_start,
+            speech::voice_stop,
+            speech::listen_start,
+            speech::listen_stop,
+            speech::transcript_recent,
+            speech::transcript_clear,
+            llm::llm_set_key,
+            llm::llm_has_key,
+            llm::llm_models,
+            llm::llm_answer
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

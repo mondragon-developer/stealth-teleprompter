@@ -2,10 +2,11 @@
 
 ## Current state
 
-v0.1 working on Windows 11. The app builds and runs with `npm run tauri dev`
-and the core loop is functional: load a script, read it from the floating
-panel, auto-scroll at adjustable speed, drive everything with global hotkeys
-while another app has focus.
+v0.2.0 released and self-updating. The core loop is solid: load a script,
+read it from the floating panel, auto-scroll at adjustable speed, drive
+everything with global hotkeys while another app has focus. v0.3 work is
+in the tree but not yet released: speed down to zero, word highlight,
+voice follow and the Answers panel.
 
 ## Done
 
@@ -25,11 +26,22 @@ while another app has focus.
 - Stealth toggle to re-enable capture visibility on demand
 - Global hotkeys registered individually so a conflict costs one key, not
   the launch
+- Speed down to 0 px/s: quadratic slider, hotkey steps of 1 / 5 / 10 by
+  band, time-left shows --:-- at 0 and h:mm:ss for long reads
+- Word highlight: each word wrapped in a span, line layout cached and
+  binary-searched per scroll frame, highlight sweeps the line at the focus
+- Voice follow (Windows): cpal mic capture, whisper-rs on a 4 s sliding
+  window primed with the upcoming script words, frontend fuzzy alignment
+  in a window around the current word; models downloaded on demand
+- Answers panel: WASAPI loopback transcription of the meeting audio,
+  streamed suggestions from LM Studio, Claude, ChatGPT, Kimi or any
+  OpenAI-compatible server; keys in the OS keychain
 
 ## Hotkeys
 
 Ctrl+Alt+Space play/pause, Ctrl+Alt+Up/Down speed, Ctrl+Alt+Left/Right
-jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
+jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through,
+Ctrl+Alt+V voice follow, Ctrl+Alt+Q suggest answers.
 
 ## Next steps
 
@@ -48,9 +60,17 @@ jump, Ctrl+Alt+Home top, Ctrl+Alt+H hide/show, Ctrl+Alt+G click-through.
 - [ ] Confirm the installed v0.1.0 shows the Update button and updates
       itself to v0.2.0
 - [ ] Record the split-screen demo clip for the LinkedIn post
+- [ ] Read a full script aloud with Voice on (base model, then tiny and
+      small) and tune the alignment thresholds in alignHeard if it lags
+      or jumps
+- [ ] Try Listen + Answer on a real call with LM Studio, then Claude;
+      check the loopback picks up Zoom/Meet/Teams audio
+- [ ] Confirm CI stays green with whisper.cpp in the Windows build
+      (LIBCLANG_PATH step) and tag v0.3.0
 - [ ] Possible: per-script speed override, mirror mode for beam-splitter
-      glass, voice-follow scrolling (speech recognition tracks your place;
-      needs a native engine, the WebView2 webview has no Web Speech API)
+      glass, speech on macOS (mic via cpal works; loopback needs
+      ScreenCaptureKit, and whisper.cpp must build for the universal
+      target)
 
 ## Session log
 
@@ -171,3 +191,40 @@ The launch post copy grew to match the product: rebindable hotkeys,
 on-prompter editing in either theme, self-updating installs. Still ahead
 of the announcement: the second-device screen-share proof and the
 split-screen demo clip.
+
+### 2026-09-28
+
+Three requests from real use. The slowest speed (10 px/s) was still too
+fast for some passages, so the floor is now 0 with a quadratic slider and
+finer hotkey steps at the slow end. Reading along needed a clearer
+anchor, so Words highlights the single word under the reading line. And
+the biggest one: let the script follow the voice, and help with live
+questions.
+
+The plan went through a review before any code. It moved speech from
+Vosk to whisper-rs (Vosk needs its DLL plus three MinGW runtime DLLs
+shipped next to the exe and a fat dylib for the universal macOS build;
+whisper.cpp links statically), kept the answer UI as a pane inside the
+main window instead of a second window (Stealth, Ghost, hide and close
+all act on the main window only), and flagged the word-highlight layout
+thrash that the per-word rect reads would have caused.
+
+Voice follow runs whisper on the last four seconds of mic audio, about
+every quarter second while you speak (silence is skipped), primed with the script words
+around the current position, and emits text that the frontend aligns
+against a window of the script: the tail of what was heard is matched
+backwards with a small edit-distance tolerance, forward moves are cheap,
+backward jumps need a stronger match, and anything off script is
+ignored. The answer panel transcribes the default output device through
+WASAPI loopback, cut at pauses into phrases kept for three minutes in
+memory only, and sends the last 90 seconds plus notes and script to the
+chosen model. Two wire formats cover every provider: Anthropic's
+Messages API for Claude (low effort for speed, server-side fallback on
+Opus 5), and OpenAI chat completions for LM Studio, OpenAI, Kimi and
+Ollama.
+
+Build lesson: whisper-rs-sys ships pregenerated bindings for Linux only,
+and on Windows they fail layout asserts, so bindgen has to run, which
+needs libclang. CI points LIBCLANG_PATH at the runner's LLVM; locally,
+install LLVM or set the variable. whisper.cpp is forced to opt-level 3
+in dev builds, otherwise it cannot keep up with speech.

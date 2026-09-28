@@ -237,6 +237,13 @@ textarea:focus-visible {
   color: var(--current);
 }
 
+#script-text .w.now {
+  color: var(--current);
+  background: rgba(var(--accent-rgb), 0.28);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.28);
+}
+
 .focus-line {
   position: absolute;
   top: 33%;
@@ -263,6 +270,150 @@ textarea:focus-visible {
 body.editing #viewport,
 body.editing .focus-line {
   display: none;
+}
+
+body.answers .focus-line {
+  right: 324px;
+}
+
+#voice-status {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  font-size: 11px;
+  color: var(--dim);
+  background: rgba(var(--raised-rgb), 0.9);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 2px 10px;
+  max-width: 60%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+#voice-status.error {
+  color: var(--error);
+}
+
+/* Answer pane */
+
+#answer-pane {
+  flex: none;
+  width: 310px;
+  margin: 6px 6px 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(var(--raised-rgb), 0.6);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-size: 12px;
+  overflow-y: auto;
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.pane-actions {
+  display: flex;
+  gap: 4px;
+}
+
+#heard {
+  color: var(--dim);
+  font-size: 11px;
+  max-height: 3.2em;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.ask-row,
+#ai-setup .inline {
+  display: flex;
+  gap: 4px;
+}
+
+#answer-pane input[type="text"],
+#answer-pane input[type="password"],
+#answer-pane select,
+#answer-pane textarea,
+#speech-setup select {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 7px;
+  min-width: 0;
+}
+
+#speech-setup select option,
+#answer-pane select option {
+  background: rgb(var(--raised-rgb));
+  color: var(--text);
+}
+
+.ask-row input,
+#ai-setup .inline input {
+  flex: 1;
+}
+
+#answer-out {
+  flex: 1;
+  min-height: 60px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  user-select: text;
+  overflow-y: auto;
+}
+
+#answer-out.error {
+  color: var(--error);
+  font-size: 12px;
+}
+
+#ai-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+}
+
+#ai-setup label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+#ai-setup label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+#ai-setup textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+#answer-pane .note {
+  margin: 0;
+  color: var(--dim);
+  font-size: 11px;
 }
 
 #countdown {
@@ -421,6 +572,8 @@ input[type="range"] {
   padding: 12px 14px;
   font-size: 12px;
   z-index: 30;
+  max-height: calc(100% - 50px);
+  overflow-y: auto;
 }
 
 #hotkey-list {
@@ -473,6 +626,24 @@ input[type="range"] {
 
 #hk-reset {
   margin-top: 10px;
+}
+
+#speech-setup {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#speech-setup h4 {
+  margin: 0;
+  font-size: 12px;
+}
+
+#speech-setup p {
+  margin: 0;
 }
 
 /* Paste modal */

@@ -17,8 +17,20 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-no-provider"] }
+futures-util = "0.3"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-window-state = "2"
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
+
+[target.'cfg(windows)'.dependencies]
+cpal = "0.18"
+whisper-rs = "0.16"
+
+# whisper.cpp in an unoptimized dev build is too slow to keep up with speech.
+[profile.dev.package.whisper-rs-sys]
+opt-level = 3
