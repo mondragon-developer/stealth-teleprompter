@@ -39,11 +39,20 @@
               <button id="btn-ai-setup" title="Model, provider and notes">Setup</button>
             </div>
           </div>
-          <div id="heard" class="hidden"></div>
+          <div id="model-status" class="hidden">
+            <span id="model-status-text"></span>
+            <span class="status-actions">
+              <button id="btn-model-use" class="hidden"></button>
+              <button id="btn-model-check" title="Ask the server which models are loaded">Check</button>
+            </span>
+          </div>
+          <div class="section-label">Heard in the call</div>
+          <div id="heard"></div>
           <div class="ask-row">
             <input id="ask-input" type="text" placeholder="Type a question, or leave empty to use what was heard" />
-            <button id="btn-ask" class="primary">Answer</button>
           </div>
+          <button id="btn-ask" class="primary">Find answer</button>
+          <p id="ask-hint" class="note"></p>
           <div id="answer-out" aria-live="polite"></div>
           <div id="ai-setup" class="hidden">
             <label>Provider
@@ -78,7 +87,7 @@
             <button id="btn-transcript-clear">Clear heard transcript</button>
           </div>
         </aside>
-        <div id="ghost-banner" class="hidden">Click-through is on. Press <span id="ghost-hotkey">Ctrl+Alt+G</span> to get your mouse back.</div>
+        <div id="ghost-banner" class="hidden">Click-through is on. Press <span id="ghost-hotkey">Ctrl+Alt+C</span> to get your mouse back.</div>
       </main>
 
       <footer id="controls">
@@ -111,6 +120,7 @@
         <button id="btn-edit" title="Edit this script in place" disabled>Edit</button>
         <button id="btn-edit-cancel" class="hidden">Cancel</button>
         <button id="btn-count" title="Count 3-2-1 before auto-scroll starts">3-2-1</button>
+        <button id="btn-solid" title="Make the background solid after 2 seconds without mouse movement, and see-through again when the mouse moves">Solid</button>
         <button id="btn-ghost" title="Let clicks pass through this window.">Ghost</button>
         <button id="btn-stealth" class="active" title="Hide this window from screen capture">Stealth</button>
         <button id="btn-theme" title="Switch color theme">Light</button>

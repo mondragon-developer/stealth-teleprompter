@@ -28,7 +28,7 @@ const DEFAULT_HOTKEYS: &[(&str, &str)] = &[
     ("jump-forward", "ctrl+alt+ArrowRight"),
     ("restart", "ctrl+alt+Home"),
     ("toggle-visibility", "ctrl+alt+KeyH"),
-    ("toggle-click-through", "ctrl+alt+KeyG"),
+    ("toggle-click-through", "ctrl+alt+KeyC"),
     ("toggle-voice", "ctrl+alt+KeyV"),
     ("answer", "ctrl+alt+KeyQ"),
 ];
@@ -85,7 +85,7 @@ the prompter from inside PowerPoint or your browser.
 
 Ctrl+Alt+Space plays or pauses. Ctrl+Alt+Up and Down change the speed.
 Ctrl+Alt+Left and Right jump back and forward. Ctrl+Alt+Home goes back to
-the top. Ctrl+Alt+H hides or shows this window. Ctrl+Alt+G toggles
+the top. Ctrl+Alt+H hides or shows this window. Ctrl+Alt+C toggles
 click-through mode.
 
 Those are only the defaults. Open Keys and click any combo to record your
@@ -263,6 +263,14 @@ fn set_click_through(
     window
         .emit("click-through-changed", enabled)
         .map_err(|e| e.to_string())
+}
+
+// Desktop coordinates, so the frontend can tell the mouse is moving even
+// while click-through keeps every mouse event away from the webview.
+#[tauri::command]
+fn cursor_position(app: AppHandle) -> Result<(f64, f64), String> {
+    let p = app.cursor_position().map_err(|e| e.to_string())?;
+    Ok((p.x, p.y))
 }
 
 #[tauri::command]
@@ -530,6 +538,7 @@ pub fn run() {
             save_settings,
             open_scripts_folder,
             set_click_through,
+            cursor_position,
             set_capture_protection,
             get_hotkeys,
             set_hotkey,
@@ -547,6 +556,7 @@ pub fn run() {
             llm::llm_set_key,
             llm::llm_has_key,
             llm::llm_models,
+            llm::llm_loaded,
             llm::llm_answer
         ])
         .run(tauri::generate_context!())

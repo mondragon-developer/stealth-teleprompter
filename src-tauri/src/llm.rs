@@ -159,6 +159,54 @@ pub async fn llm_models(provider: Provider) -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
+#[derive(Serialize)]
+pub struct LoadedModel {
+    id: String,
+    state: String,
+    context: u64,
+}
+
+// LM Studio answers a request for a model that is not loaded by loading
+// another copy (JIT), which can stack several models on the GPU. Its native
+// API reports what is actually loaded, so the panel can say so up front.
+// Servers without that endpoint (Ollama, OpenAI) just get an error here.
+#[tauri::command]
+pub async fn llm_loaded(provider: Provider) -> Result<Vec<LoadedModel>, String> {
+    let p = provider;
+    if p.kind != "openai" {
+        return Err("not an LM Studio server".into());
+    }
+    let b = base(&p);
+    let origin = b.strip_suffix("/v1").unwrap_or(&b);
+    let resp = openai_request(&p, &format!("{origin}/api/v0/models"), false)?
+        .send()
+        .await
+        .map_err(|e| connect_error(e, &p))?;
+    let v: Value = check(resp).await?.json().await.map_err(|e| e.to_string())?;
+    Ok(v.get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|m| m.get("type").and_then(|t| t.as_str()) != Some("embeddings"))
+                .filter_map(|m| {
+                    let state = m.get("state")?.as_str()?;
+                    if state == "not-loaded" {
+                        return None;
+                    }
+                    Some(LoadedModel {
+                        id: m.get("id")?.as_str()?.to_string(),
+                        state: state.to_string(),
+                        context: m
+                            .get("loaded_context_length")
+                            .and_then(|c| c.as_u64())
+                            .unwrap_or(0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
 #[tauri::command]
 pub async fn llm_answer(
     provider: Provider,

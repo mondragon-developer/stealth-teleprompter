@@ -18,12 +18,14 @@ const DEFAULTS = {
   hotkeys: {},
   theme: "dark",
   wordHighlight: true,
+  autoSolid: true,
   asrModel: "base",
   asrLang: "auto",
   ai: { provider: "lmstudio", includeScript: true, notes: "", providers: {} },
 };
 
 const SPEED_MAX = 300;
+const SOLID_AFTER_MS = 2000;
 
 // Presets for the answer panel. Each keeps its own URL, model and saved key,
 // so switching providers mid-meeting does not wipe the others.
@@ -45,7 +47,7 @@ const DEFAULT_HOTKEYS = {
   "jump-forward": "ctrl+alt+ArrowRight",
   "restart": "ctrl+alt+Home",
   "toggle-visibility": "ctrl+alt+KeyH",
-  "toggle-click-through": "ctrl+alt+KeyG",
+  "toggle-click-through": "ctrl+alt+KeyC",
   "toggle-voice": "ctrl+alt+KeyV",
   "answer": "ctrl+alt+KeyQ",
 };
@@ -92,6 +94,8 @@ let listenStarting = false;
 let manualUntil = 0;
 let contextTimer = null;
 let answerSeq = 0;
+let cursorLast = "";
+let cursorMovedAt = 0;
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -113,6 +117,8 @@ function applyUI() {
   $("opacity").value = settings.opacity;
   $("contrast").value = settings.textContrast;
   $("btn-count").classList.toggle("active", !!settings.countdown);
+  $("btn-solid").classList.toggle("active", !!settings.autoSolid);
+  updateSolid();
   document.body.classList.toggle("light", settings.theme === "light");
   $("btn-theme").textContent = settings.theme === "light" ? "Dark" : "Light";
 }
@@ -391,6 +397,29 @@ function setGhostUI(v) {
   $("btn-ghost").classList.toggle("active", v);
 }
 
+// The panel goes fully opaque once the mouse rests, and drops back to the
+// Opacity slider value the moment it moves, so the screen underneath shows
+// only while you are working on it. Polled from Rust because click-through
+// stops mouse events from ever reaching the page.
+function updateSolid() {
+  const solid = !!settings.autoSolid && performance.now() - cursorMovedAt >= SOLID_AFTER_MS;
+  document.body.classList.toggle("solid", solid);
+}
+
+async function pollCursor() {
+  try {
+    const [x, y] = await invoke("cursor_position");
+    const key = Math.round(x) + "," + Math.round(y);
+    if (key !== cursorLast) {
+      cursorLast = key;
+      cursorMovedAt = performance.now();
+    }
+  } catch (err) {
+    cursorMovedAt = performance.now();
+  }
+  updateSolid();
+}
+
 function setStealthUI(v) {
   stealth = v;
   $("btn-stealth").classList.toggle("active", v);
@@ -558,13 +587,22 @@ async function refreshHotkeys() {
   }
   renderHotkeyList();
   const ghostCombo = hotkeys.bindings["toggle-click-through"] || DEFAULT_HOTKEYS["toggle-click-through"];
-  $("ghost-hotkey").textContent = prettyShortcut(ghostCombo);
+  const hideCombo = hotkeys.bindings["toggle-visibility"] || DEFAULT_HOTKEYS["toggle-visibility"];
+  const ghostDead = hotkeys.unavailable.includes("toggle-click-through");
+  const hideDead = hotkeys.unavailable.includes("toggle-visibility");
+  // Showing the window again also clears click-through (see
+  // toggle_main_window), so hide/show is a usable escape when another app
+  // owns the ghost combo.
+  const escape = ghostDead
+    ? prettyShortcut(hideCombo) + " twice (hide, then show)"
+    : prettyShortcut(ghostCombo);
+  $("ghost-hotkey").textContent = escape;
   const b = $("btn-ghost");
-  const dead = hotkeys.unavailable.includes("toggle-click-through");
+  const dead = ghostDead && hideDead;
   b.disabled = dead;
   b.title = dead
-    ? "Unavailable: another app owns " + prettyShortcut(ghostCombo) + ", which is needed to exit click-through mode. Rebind it in Keys."
-    : "Let clicks pass through this window. " + prettyShortcut(ghostCombo) + " restores your mouse.";
+    ? "Unavailable: other apps own " + prettyShortcut(ghostCombo) + " and " + prettyShortcut(hideCombo) + ", which are needed to exit click-through mode. Rebind one in Keys."
+    : "Let clicks pass through this window. " + escape + " restores your mouse.";
 }
 
 async function openScript(s) {
@@ -907,8 +945,8 @@ function onAsr(p) {
     const line = document.createElement("div");
     line.textContent = p.text;
     heard.appendChild(line);
-    while (heard.children.length > 3) heard.firstChild.remove();
-    heard.classList.remove("hidden");
+    while (heard.children.length > 20) heard.firstChild.remove();
+    heard.scrollTop = heard.scrollHeight;
   }
 }
 
@@ -940,6 +978,7 @@ async function setListen(on) {
   listenStarting = false;
   listenOn = true;
   $("btn-listen").classList.add("active");
+  checkModel();
 }
 
 function toggleAnswers() {
@@ -948,6 +987,64 @@ function toggleAnswers() {
   const open = !pane.classList.contains("hidden");
   document.body.classList.toggle("answers", open);
   $("btn-answers").classList.toggle("active", open);
+  if (open) {
+    const combo = hotkeys.bindings.answer || DEFAULT_HOTKEYS.answer;
+    $("ask-hint").textContent = `Answers the question you type, or else the last one heard. Shortcut: ${prettyShortcut(combo)}`;
+    checkModel();
+  }
+}
+
+// LM Studio instance ids carry a ":2" style suffix when a second copy of the
+// same model gets loaded.
+const baseModelId = (id) => id.replace(/:\d+$/, "");
+
+function setModelStatus(kind, text, use) {
+  const box = $("model-status");
+  box.classList.remove("hidden", "ok", "warn");
+  if (kind) box.classList.add(kind);
+  $("model-status-text").textContent = text;
+  const btn = $("btn-model-use");
+  btn.classList.toggle("hidden", !use);
+  if (use) {
+    btn.textContent = `Use ${use}`;
+    btn.dataset.model = use;
+  }
+}
+
+// Only LM Studio reports which models are loaded; for other providers the
+// check fails quietly and the status box stays hidden.
+async function checkModel() {
+  const p = providerCfg();
+  if (p.kind !== "openai") {
+    $("model-status").classList.add("hidden");
+    return;
+  }
+  let loaded;
+  try {
+    loaded = await invoke("llm_loaded", { provider: p });
+  } catch (err) {
+    if (/could not reach/.test(String(err))) setModelStatus("warn", String(err));
+    else $("model-status").classList.add("hidden");
+    return;
+  }
+  const ready = loaded.filter((m) => m.state === "loaded");
+  const names = [...new Set(ready.map((m) => baseModelId(m.id)))];
+  const want = p.model;
+  const mine = ready.find((m) => baseModelId(m.id) === want);
+  const extra = ready.length > 1 ? ` LM Studio has ${ready.length} model instances loaded; unload the ones you do not need to free the GPU.` : "";
+  if (!want) {
+    setModelStatus("warn", names.length ? `No model picked. Loaded in LM Studio: ${names.join(", ")}.` : "No model picked, and none is loaded in LM Studio.", names[0]);
+  } else if (mine) {
+    const ctx = mine.context ? `, ${Math.round(mine.context / 1024)}k context` : "";
+    const small = mine.context && mine.context < 8192 ? " The context is small for a script plus transcript; raise it to 16k in LM Studio." : "";
+    setModelStatus(small || extra ? "warn" : "ok", `Answering with ${want} (loaded${ctx}).${small}${extra}`);
+  } else if (loaded.some((m) => baseModelId(m.id) === want)) {
+    setModelStatus("warn", `LM Studio is still loading ${want}.`);
+  } else if (names.length) {
+    setModelStatus("warn", `${want} is not loaded; LM Studio has ${names.join(", ")}. Answering would load a second model and wait for it.`, names[0]);
+  } else {
+    setModelStatus("warn", `No model is loaded in LM Studio. The first answer waits while it loads ${want}.`);
+  }
 }
 
 function providerCfg() {
@@ -1049,6 +1146,7 @@ async function ask() {
     if (seq === answerSeq && first) showAnswerError("The model returned no text.");
   } catch (err) {
     if (seq === answerSeq) showAnswerError(String(err));
+    checkModel();
   }
 }
 
@@ -1070,9 +1168,23 @@ function wireAnswers() {
     settings.ai.provider = e.target.value;
     saveSettingsSoon();
     loadAiUI();
+    checkModel();
   });
-  $("ai-url").addEventListener("change", (e) => saveProviderField("url", e.target.value.trim()));
-  $("ai-model").addEventListener("change", (e) => saveProviderField("model", e.target.value.trim()));
+  $("ai-url").addEventListener("change", (e) => {
+    saveProviderField("url", e.target.value.trim());
+    checkModel();
+  });
+  $("ai-model").addEventListener("change", (e) => {
+    saveProviderField("model", e.target.value.trim());
+    checkModel();
+  });
+  $("btn-model-check").addEventListener("click", checkModel);
+  $("btn-model-use").addEventListener("click", (e) => {
+    const id = e.currentTarget.dataset.model;
+    $("ai-model").value = id;
+    saveProviderField("model", id);
+    checkModel();
+  });
   $("btn-ai-models").addEventListener("click", async () => {
     const b = $("btn-ai-models");
     b.disabled = true;
@@ -1113,7 +1225,6 @@ function wireAnswers() {
   $("btn-transcript-clear").addEventListener("click", () => {
     invoke("transcript_clear").catch(() => {});
     $("heard").innerHTML = "";
-    $("heard").classList.add("hidden");
   });
 }
 
@@ -1217,6 +1328,12 @@ function wireControls() {
   $("btn-count").addEventListener("click", () => {
     settings.countdown = !settings.countdown;
     $("btn-count").classList.toggle("active", !!settings.countdown);
+    saveSettingsSoon();
+  });
+
+  $("btn-solid").addEventListener("click", () => {
+    settings.autoSolid = !settings.autoSolid;
+    applyUI();
     saveSettingsSoon();
   });
 
@@ -1405,6 +1522,9 @@ async function init() {
   setInterval(() => {
     if (current && ((playing && settings.speed > 0) || voiceOn)) savePosition();
   }, 3000);
+
+  cursorMovedAt = performance.now();
+  setInterval(pollCursor, 150);
 
   requestAnimationFrame(tick);
 }

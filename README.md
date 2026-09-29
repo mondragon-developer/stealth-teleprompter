@@ -82,7 +82,11 @@ instead of listening. Let people know when you transcribe them; answering
 sends the transcript to the provider you chose.
 
 Ghost mode makes the window click-through so your mouse reaches the slides
-underneath. Stealth toggles the capture invisibility if you ever want the
+underneath. With Solid on, the background turns fully opaque (near black in
+the dark theme, near white in the light one) after two seconds without mouse movement,
+and goes back to the Opacity setting as soon as the mouse moves, so the
+script is easy to read while you talk and the screen shows through while you
+work on it. Stealth toggles the capture invisibility if you ever want the
 prompter to show up in a recording.
 
 Edit changes the loaded script in place: the stage becomes an editor,
@@ -115,7 +119,7 @@ Defaults:
 | Ctrl+Alt+Right | jump forward |
 | Ctrl+Alt+Home | back to top |
 | Ctrl+Alt+H | hide / show window |
-| Ctrl+Alt+G | click-through on / off |
+| Ctrl+Alt+C | click-through on / off |
 | Ctrl+Alt+V | voice follow on / off |
 | Ctrl+Alt+Q | suggest answers |
 

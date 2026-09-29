@@ -80,6 +80,11 @@ textarea {
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
   overflow: hidden;
+  transition: background-color 0.25s ease;
+}
+
+body.solid .panel {
+  background: rgb(var(--panel-rgb));
 }
 
 body.ghost .panel {
@@ -308,7 +313,7 @@ body.answers .focus-line {
 
 #answer-pane {
   flex: none;
-  width: 310px;
+  width: 380px;
   margin: 6px 6px 6px 0;
   display: flex;
   flex-direction: column;
@@ -333,14 +338,66 @@ body.answers .focus-line {
   gap: 4px;
 }
 
-#heard {
+.section-label {
   color: var(--dim);
   font-size: 11px;
-  max-height: 3.2em;
-  overflow: hidden;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#heard {
+  flex: none;
+  min-height: 6em;
+  max-height: 11em;
+  overflow-y: auto;
+  padding: 6px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  user-select: text;
+}
+
+#heard div + div {
+  margin-top: 4px;
+}
+
+#heard:empty::before {
+  content: "Nothing yet. Press Listen to transcribe the other people in the call.";
+  color: var(--dim);
+}
+
+#btn-ask {
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#model-status {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  line-height: 1.35;
+}
+
+#model-status.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+#model-status.ok {
+  color: var(--ok);
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .ask-row,
