@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local notes, assistant state, and editor history
+/PROGRESS.md
+/LINKEDIN-POST.md
+/.history/
+/.claude/
+/.codex/
+/.agents/
+
+# Credentials and signing material must never be committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx

@@ -40,6 +40,69 @@ mod credential_tests {
     }
 }
 
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+
+    fn provider(id: &str, url: &str) -> Provider {
+        Provider { id: id.into(), kind: if id == "claude" { "anthropic" } else { "openai" }.into(),
+            base_url: url.into(), model: "test-model".into() }
+    }
+
+    #[test]
+    fn preset_keys_cannot_be_redirected_to_another_origin_or_api_format() {
+        for (id, url) in [("claude", "https://api.anthropic.com"), ("openai", "https://api.openai.com/v1"),
+            ("kimi", "https://api.moonshot.ai/v1")] {
+            assert!(validate_provider(&provider(id, url)).is_ok());
+            for bad in ["http://localhost:8000", "https://example.com", "https://api.anthropic.com.example.com",
+                "https://api.anthropic.com:444", "https://api.anthropic.com/other"] {
+                assert!(validate_provider(&provider(id, bad)).is_err());
+            }
+        }
+        let mut p = provider("claude", "https://api.anthropic.com");
+        p.kind = "openai".into();
+        assert!(validate_provider(&p).is_err());
+        assert!(validate_provider_id("unknown").is_err());
+    }
+
+    #[test]
+    fn custom_servers_require_https_except_loopback_and_reject_url_credentials() {
+        for good in ["http://localhost:1234/v1", "http://127.0.0.1:11434/v1", "http://[::1]:1234/v1", "https://models.example.com/v1"] {
+            assert!(validate_provider(&provider("custom", good)).is_ok(), "{good}");
+        }
+        for bad in ["http://192.168.1.2/v1", "http://localhost.example.com/v1", "file:///tmp/model",
+            "https://user:password@example.com/v1", "https://example.com/v1?key=example", "https://example.com/v1#key"] {
+            assert!(validate_provider(&provider("custom", bad)).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn credential_client_does_not_follow_redirects() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let source = TcpListener::bind("127.0.0.1:0").unwrap();
+        let target = TcpListener::bind("127.0.0.1:0").unwrap();
+        target.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/", source.local_addr().unwrap());
+        let location = format!("http://{}/", target.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = source.accept().unwrap();
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            let mut buffer = [0; 4096];
+            socket.read(&mut buffer).unwrap();
+            write!(socket, "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+        });
+        let status = tauri::async_runtime::block_on(async {
+            client_builder().no_proxy().build().unwrap().get(url)
+                .header("x-api-key", "dummy-test-key").send().await.unwrap().status()
+        });
+        server.join().unwrap();
+        assert_eq!(status, reqwest::StatusCode::FOUND);
+        assert_eq!(target.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+    }
+}
+
 #[derive(Deserialize)]
 pub struct Provider {
     // Keychain account name; one saved key per provider preset.
@@ -59,17 +122,22 @@ pub enum AnswerEvent {
 
 #[cfg(desktop)]
 fn key_entry(id: &str) -> Result<keyring::Entry, String> {
+    validate_provider_id(id)?;
     keyring::Entry::new(KEYRING_SERVICE, id).map_err(|e| e.to_string())
 }
 
 #[cfg(desktop)]
-fn read_key(id: &str) -> Option<String> {
-    key_entry(id).ok()?.get_password().ok().filter(|k| !k.is_empty())
+fn read_key(id: &str) -> Result<Option<String>, String> {
+    match key_entry(id)?.get_password() {
+        Ok(key) => Ok(Some(key).filter(|key| !key.is_empty())),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err("Could not read the system keychain. Unlock it and try again.".into()),
+    }
 }
 
 #[cfg(not(desktop))]
-fn read_key(_id: &str) -> Option<String> {
-    None
+fn read_key(_id: &str) -> Result<Option<String>, String> {
+    Ok(None)
 }
 
 #[cfg(desktop)]
@@ -130,32 +198,83 @@ pub fn llm_has_key(_id: String) -> Result<bool, String> {
     Err("key storage is desktop only".into())
 }
 
-fn client() -> Result<reqwest::Client, String> {
+fn client_builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
+        // Never forward credentials (especially x-api-key) to redirect targets.
+        .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(std::time::Duration::from_secs(10))
         .read_timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| e.to_string())
+}
+
+fn client() -> Result<reqwest::Client, String> {
+    client_builder().build().map_err(|e| e.to_string())
 }
 
 fn base(p: &Provider) -> String {
     p.base_url.trim().trim_end_matches('/').to_string()
 }
 
+fn validate_provider_id(id: &str) -> Result<(), String> {
+    if matches!(id, "claude" | "openai" | "kimi" | "lmstudio" | "custom") {
+        Ok(())
+    } else {
+        Err("Unknown provider".into())
+    }
+}
+
+// Bind preset credentials to their provider, even when the caller edits the URL
+// or supplies a mismatched wire format. Only local servers may use plain HTTP.
+fn validate_provider(p: &Provider) -> Result<(), String> {
+    validate_provider_id(&p.id)?;
+    let expected_kind = if p.id == "claude" { "anthropic" } else { "openai" };
+    if p.kind != expected_kind {
+        return Err("Provider API format does not match the selected provider".into());
+    }
+    let url = reqwest::Url::parse(&base(p)).map_err(|_| "Invalid provider URL")?;
+    if !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+        return Err("Provider URL must not contain credentials, query parameters, or fragments".into());
+    }
+    let host = url.host_str().ok_or("Provider URL needs a host")?;
+    let loopback = host == "localhost" || host.trim_matches(['[', ']'])
+        .parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback());
+    if url.scheme() != "https" && !(url.scheme() == "http" && loopback) {
+        return Err("Provider URL must use HTTPS (HTTP is allowed only for localhost)".into());
+    }
+    let preset = match p.id.as_str() {
+        "claude" => Some(("api.anthropic.com", "")),
+        "openai" => Some(("api.openai.com", "/v1")),
+        "kimi" => Some(("api.moonshot.ai", "/v1")),
+        _ => None,
+    };
+    if let Some((expected_host, expected_path)) = preset {
+        if url.scheme() != "https" || host != expected_host
+            || url.port_or_known_default() != Some(443)
+            || url.path().trim_end_matches('/') != expected_path {
+            return Err("This provider's key can only be sent to its official API URL. Use Other OpenAI-compatible with a separate key for custom servers.".into());
+        }
+    }
+    Ok(())
+}
+
 fn anthropic_request(p: &Provider, url: &str, post: bool) -> Result<reqwest::RequestBuilder, String> {
-    let key = read_key(&p.id).ok_or("no API key saved for this provider")?;
+    validate_provider(p)?;
+    let key = read_key(&p.id)?.ok_or("no API key saved for this provider")?;
+    let mut header = reqwest::header::HeaderValue::from_str(&key)
+        .map_err(|_| "Invalid API key format")?;
+    header.set_sensitive(true);
     let c = client()?;
     let rb = if post { c.post(url) } else { c.get(url) };
     Ok(rb
-        .header("x-api-key", key)
+        .header("x-api-key", header)
         .header("anthropic-version", "2023-06-01"))
 }
 
 fn openai_request(p: &Provider, url: &str, post: bool) -> Result<reqwest::RequestBuilder, String> {
+    validate_provider(p)?;
     let c = client()?;
     let mut rb = if post { c.post(url) } else { c.get(url) };
     // LM Studio and Ollama run without a key, so a missing one is fine here.
-    if let Some(key) = read_key(&p.id) {
+    if let Some(key) = read_key(&p.id)? {
         rb = rb.bearer_auth(key);
     }
     Ok(rb)

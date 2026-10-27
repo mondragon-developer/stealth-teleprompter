@@ -24,6 +24,10 @@ npm install
 npm run tauri dev
 ```
 
+`tauri dev` launches the app. `tauri build` creates the executable and installers;
+it does not launch them. After a Windows build, run
+`.\src-tauri\target\release\screen-script.exe` or open the generated installer.
+
 On Windows the speech features compile whisper.cpp, whose Rust bindings
 are generated with libclang. Install LLVM once (`winget install LLVM.LLVM`)
 or point `LIBCLANG_PATH` at a folder containing `libclang.dll`.
@@ -183,7 +187,12 @@ with 2,000 input and 300 output tokens costs about $0.00035 at the lower tier;
 charges. Use your provider's billing console for actual spending and limits.
 [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing)
 
-Development checks: `node --test tests/reading.test.js` and
+Development checks: `npm test` and
 `cargo check --manifest-path src-tauri/Cargo.toml`. Live microphone accuracy,
 end-to-end latency, and account-specific Claude access require a local reading
 session and an API request respectively; automated checks do not establish them.
+
+Cloud provider presets send keys only to their official HTTPS API addresses.
+Custom servers require HTTPS except for loopback addresses such as localhost;
+API requests do not follow redirects. See [SECURITY.md](SECURITY.md) for storage
+boundaries and the outstanding Linux-only dependency advisory.

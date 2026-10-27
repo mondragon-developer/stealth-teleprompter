@@ -1,3 +1,4 @@
+import { captureController } from "./capture-controller.js";
 import { mdLite, formatSelection } from "./formatting.js";
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -317,7 +318,7 @@ function requestPlay() {
     return;
   }
   if (!current) return;
-  if (voiceOn) setVoice(false);
+  if (voiceControl.desired || voiceOn) setVoice(false);
   if (!settings.countdown) {
     setPlaying(true);
     return;
@@ -428,7 +429,7 @@ function setEditingUI(v) {
 
 function enterEdit() {
   if (!current || editing) return;
-  if (voiceOn || voiceStarting) setVoice(false);
+  if (voiceControl.desired || voiceOn || voiceStarting) setVoice(false);
   cancelCountdown();
   setPlaying(false);
   savePosition();
@@ -594,7 +595,7 @@ async function refreshHotkeys() {
 }
 
 async function openScript(s) {
-  if (voiceOn || voiceStarting) setVoice(false);
+  if (voiceControl.desired || voiceOn || voiceStarting) setVoice(false);
   savePosition();
   cancelCountdown();
   let text;
@@ -660,7 +661,7 @@ function renderList() {
         if (editing) setEditingUI(false);
         $("btn-edit").disabled = true;
         setPlaying(false);
-        if (voiceOn) setVoice(false);
+        if (voiceControl.desired || voiceOn) setVoice(false);
         renderScript("");
         $("script-title").textContent = "No script loaded";
         renderTimeLeft();
@@ -743,7 +744,7 @@ function handleHotkey(action) {
       setSpeed(stepSpeed(-1));
       break;
     case "toggle-voice":
-      setVoice(!(voiceOn || voiceStarting));
+      setVoice(!voiceControl.desired);
       break;
     case "answer":
       if ($("answer-pane").classList.contains("hidden")) toggleAnswers();
@@ -803,9 +804,17 @@ async function ensureModel() {
   return false;
 }
 
-async function setVoice(on) {
+const voiceControl = captureController(applyVoice, () => voiceOn,
+  (err) => showVoiceStatus("Voice control failed: " + err, true));
+const listenControl = captureController(applyListen, () => listenOn,
+  (err) => showAnswerError("Listen control failed: " + err));
+const setVoice = (on) => voiceControl.set(on);
+const setListen = (on) => listenControl.set(on);
+
+async function applyVoice(on) {
   if (!on) {
     const wasOn = voiceOn;
+    await invoke("voice_stop");
     voiceOn = false;
     voiceStarting = false;
     $("btn-voice").classList.remove("active");
@@ -814,7 +823,6 @@ async function setVoice(on) {
     $("voice-timing").textContent = "";
     $("voice-heard").textContent = "";
     $("btn-voice").textContent = "Voice";
-    invoke("voice_stop").catch(() => {});
     if (wasOn) savePosition();
     return;
   }
@@ -824,21 +832,24 @@ async function setVoice(on) {
     voiceStarting = false;
     return;
   }
-  if (!voiceStarting) return;
+  // Play, editing, or switching scripts can supersede startup during the model check.
+  if (!voiceControl.desired || editing || !current) {
+    voiceStarting = false;
+    return;
+  }
   cancelCountdown();
   setPlaying(false);
   showVoiceStatus("Loading speech model...");
   try {
     await invoke("voice_context", { text: "" });
+    if (!voiceControl.desired) {
+      voiceStarting = false;
+      return;
+    }
     await invoke("voice_start", { model: settings.asrModel, language: settings.asrLang });
   } catch (err) {
     if (voiceStarting) showVoiceStatus("Voice follow failed: " + err, true);
     voiceStarting = false;
-    return;
-  }
-  // A stop requested while the model loaded clears voiceStarting.
-  if (!voiceStarting) {
-    invoke("voice_stop").catch(() => {});
     return;
   }
   voiceStarting = false;
@@ -950,12 +961,12 @@ function onAsr(p) {
   }
 }
 
-async function setListen(on) {
+async function applyListen(on) {
   if (!on) {
+    await invoke("listen_stop");
     listenOn = false;
     listenStarting = false;
     $("btn-listen").classList.remove("active");
-    invoke("listen_stop").catch(() => {});
     return;
   }
   if (!speechOk || listenOn || listenStarting) return;
@@ -964,15 +975,15 @@ async function setListen(on) {
     listenStarting = false;
     return;
   }
+  if (!listenControl.desired) {
+    listenStarting = false;
+    return;
+  }
   try {
     await invoke("listen_start", { model: settings.asrModel, language: settings.asrLang });
   } catch (err) {
     if (listenStarting) showAnswerError("Listen failed: " + err);
     listenStarting = false;
-    return;
-  }
-  if (!listenStarting) {
-    invoke("listen_stop").catch(() => {});
     return;
   }
   listenStarting = false;
@@ -1054,7 +1065,8 @@ function providerCfg() {
   return {
     id,
     kind: preset.kind,
-    base_url: o.url || preset.url,
+    // Ignore old saved URL overrides for credentials now bound to an official host.
+    base_url: ["claude", "openai", "kimi"].includes(id) ? preset.url : (o.url || preset.url),
     model: o.model !== undefined ? o.model : preset.model,
   };
 }
@@ -1134,6 +1146,7 @@ function loadAiUI() {
   const p = providerCfg();
   $("ai-provider").value = p.id;
   $("ai-url").value = p.base_url;
+  $("ai-url").readOnly = ["claude", "openai", "kimi"].includes(p.id);
   $("ai-model").value = p.model;
   $("ai-key").value = "";
   $("ai-include-script").checked = !!settings.ai.includeScript;
@@ -1221,7 +1234,7 @@ function wireAnswers() {
       ask();
     }
   });
-  $("btn-listen").addEventListener("click", () => setListen(!(listenOn || listenStarting)));
+  $("btn-listen").addEventListener("click", () => setListen(!listenControl.desired));
   $("btn-ai-setup").addEventListener("click", () => {
     $("ai-setup").classList.toggle("hidden");
     $("btn-ai-setup").classList.toggle("active", !$("ai-setup").classList.contains("hidden"));
@@ -1365,7 +1378,7 @@ function wireControls() {
     showWord(wordIdx);
     saveSettingsSoon();
   });
-  $("btn-voice").addEventListener("click", () => setVoice(!(voiceOn || voiceStarting)));
+  $("btn-voice").addEventListener("click", () => setVoice(!voiceControl.desired));
   wireAnswers();
   wireSpeechSetup();
   $("opacity").addEventListener("input", (e) => {
