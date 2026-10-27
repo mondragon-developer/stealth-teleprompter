@@ -1,3 +1,4 @@
+import { mdLite, formatSelection } from "./formatting.js";
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { Channel } = window.__TAURI__.core;
@@ -19,7 +20,7 @@ const DEFAULTS = {
   theme: "dark",
   wordHighlight: true,
   autoSolid: true,
-  asrModel: "base",
+  asrModel: "tiny",
   asrLang: "auto",
   ai: { provider: "lmstudio", includeScript: true, notes: "", providers: {} },
 };
@@ -31,7 +32,7 @@ const SOLID_AFTER_MS = 2000;
 // so switching providers mid-meeting does not wipe the others.
 const PROVIDERS = {
   lmstudio: { kind: "openai", url: "http://localhost:1234/v1", model: "" },
-  claude: { kind: "anthropic", url: "https://api.anthropic.com", model: "claude-opus-5" },
+  claude: { kind: "anthropic", url: "https://api.anthropic.com", model: "claude-haiku-5-5" },
   openai: { kind: "openai", url: "https://api.openai.com/v1", model: "" },
   kimi: { kind: "openai", url: "https://api.moonshot.ai/v1", model: "" },
   custom: { kind: "openai", url: "http://localhost:11434/v1", model: "" },
@@ -123,26 +124,12 @@ function applyUI() {
   $("btn-theme").textContent = settings.theme === "light" ? "Dark" : "Light";
 }
 
-function mdLite(text) {
-  const esc = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return esc
-    .split(/\r?\n\s*\r?\n/)
-    .map((block) => {
-      const t = block.trim();
-      if (!t) return "";
-      if (/^#{1,6}\s/.test(t)) {
-        return `<h2>${t.replace(/^#{1,6}\s+/, "")}</h2>`;
-      }
-      const html = t
-        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-        .replace(/\r?\n/g, "<br>");
-      return `<p>${html}</p>`;
-    })
-    .join("");
+function applyFormat(target, style) {
+  const edit = formatSelection(target.value, target.selectionStart, target.selectionEnd, style);
+  target.setRangeText(edit.replacement, edit.start, edit.end, "select");
+  target.focus();
+  target.setSelectionRange(edit.selectStart, edit.selectEnd);
+  target.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function normalizeWord(w) {
@@ -432,6 +419,7 @@ function setEditingUI(v) {
   editing = v;
   document.body.classList.toggle("editing", v);
   $("editor").classList.toggle("hidden", !v);
+  $("editor-tools").classList.toggle("hidden", !v);
   const b = $("btn-edit");
   b.textContent = v ? "Save" : "Edit";
   b.classList.toggle("primary", v);
@@ -778,7 +766,7 @@ function handleHotkey(action) {
 
 function showVoiceStatus(text, isError) {
   const el = $("voice-status");
-  el.textContent = text || "";
+  $("voice-message").textContent = text || "";
   el.classList.toggle("error", !!isError);
   el.classList.toggle("hidden", !text);
 }
@@ -822,6 +810,10 @@ async function setVoice(on) {
     voiceStarting = false;
     $("btn-voice").classList.remove("active");
     showVoiceStatus("");
+    $("mic-level").value = 0;
+    $("voice-timing").textContent = "";
+    $("voice-heard").textContent = "";
+    $("btn-voice").textContent = "Voice";
     invoke("voice_stop").catch(() => {});
     if (wasOn) savePosition();
     return;
@@ -832,10 +824,12 @@ async function setVoice(on) {
     voiceStarting = false;
     return;
   }
+  if (!voiceStarting) return;
   cancelCountdown();
   setPlaying(false);
-  showVoiceStatus("Starting voice follow...");
+  showVoiceStatus("Loading speech model...");
   try {
+    await invoke("voice_context", { text: "" });
     await invoke("voice_start", { model: settings.asrModel, language: settings.asrLang });
   } catch (err) {
     if (voiceStarting) showVoiceStatus("Voice follow failed: " + err, true);
@@ -850,10 +844,11 @@ async function setVoice(on) {
   voiceStarting = false;
   voiceOn = true;
   $("btn-voice").classList.add("active");
+  $("btn-voice").textContent = "Stop voice";
   if (wordIdx < 0) wordIdx = Math.max(0, wordFromFocus());
   showWord(wordIdx);
   sendVoiceContextSoon();
-  showVoiceStatus("Voice follow: read aloud, the script keeps up");
+  showVoiceStatus("Mic on - waiting for speech - local, no API cost");
 }
 
 function editDistanceAtMost(a, b, max) {
@@ -935,11 +930,16 @@ function alignHeard(text) {
   wordIdx = next;
   showWord(wordIdx);
   sendVoiceContextSoon();
+  return true;
 }
 
 function onAsr(p) {
   if (p.source === "mic") {
-    if (voiceOn && performance.now() >= manualUntil) alignHeard(p.text);
+    if (!voiceOn) return;
+    const matched = performance.now() >= manualUntil && alignHeard(p.text);
+    $("voice-heard").textContent = `Heard: ${p.text}`;
+    $("voice-heard").title = p.text;
+    showVoiceStatus(matched ? "Following your script" : "Speech recognized - waiting for a script match");
   } else if (p.source === "sys") {
     const heard = $("heard");
     const line = document.createElement("div");
@@ -1065,17 +1065,67 @@ function saveProviderField(field, value) {
   saveSettingsSoon();
 }
 
+let keyStateVersion = 0;
+let keyActionPending = false;
+
 async function refreshKeyState() {
+  const version = ++keyStateVersion;
   const p = providerCfg();
-  let has = false;
+  $("ai-key-state").textContent = "Checking system keychain...";
   try {
-    has = await invoke("llm_has_key", { id: p.id });
-  } catch (err) {}
-  $("ai-key-state").textContent = has
-    ? "A key is saved in the system keychain. Save an empty field to remove it."
-    : p.kind === "anthropic"
-      ? "No key saved yet. Claude needs one."
-      : "No key saved.";
+    const has = await invoke("llm_has_key", { id: p.id });
+    if (version !== keyStateVersion || p.id !== providerCfg().id) return;
+    $("ai-key-state").textContent = has
+      ? "A key is saved in the system keychain. Use Delete saved key to remove it."
+      : "No key saved for this provider.";
+  } catch (err) {
+    if (version === keyStateVersion && p.id === providerCfg().id) {
+      $("ai-key-state").textContent = "Unable to verify key status. Try again.";
+    }
+  }
+}
+
+async function manageKey(remove) {
+  if (keyActionPending) return;
+  const id = providerCfg().id;
+  let key = $("ai-key").value;
+  $("ai-key").value = "";
+  if (!remove && !key.trim()) {
+    ++keyStateVersion;
+    $("ai-key-state").textContent = "Paste a key to save, or use Delete saved key.";
+    return;
+  }
+  keyActionPending = true;
+  ++keyStateVersion; // Ignore older status checks while saving/deleting.
+  const controls = ["btn-ai-key", "btn-ai-key-delete", "ai-key", "ai-provider", "btn-haiku", "btn-ai-models"];
+  for (const control of controls) $(control).disabled = true;
+  $("ai-key-state").textContent = remove ? "Deleting and verifying..." : "Saving key...";
+  try {
+    if (remove) {
+      await invoke("llm_delete_key", { id });
+    } else {
+      const pending = invoke("llm_set_key", { id, key });
+      key = "";
+      await pending;
+    }
+    if (id === providerCfg().id) {
+      $("ai-key-state").textContent = remove
+        ? "Deleted and verified: no saved key remains for this provider in the system keychain."
+        : "Key saved in the system keychain. The input field has been cleared.";
+    }
+  } catch (err) {
+    if (id === providerCfg().id) {
+      // Do not display arbitrary exception details in a credential flow.
+      $("ai-key-state").textContent = remove
+        ? "Deletion could not be verified. The key may still be saved. Try Delete saved key again."
+        : "Could not save the key. Paste it again to retry.";
+    }
+  } finally {
+    key = "";
+    $("ai-key").value = "";
+    keyActionPending = false;
+    for (const control of controls) $(control).disabled = false;
+  }
 }
 
 function loadAiUI() {
@@ -1123,11 +1173,17 @@ async function ask() {
       ? "Suggest answers to the question above."
       : "Suggest answers to the most recent question asked of the presenter in the heard transcript.",
   );
+  $("ai-usage").textContent = "Usage pending; providers may omit token counts.";
   out.textContent = "Thinking...";
   let first = true;
   const ch = new Channel();
   ch.onmessage = (m) => {
-    if (seq !== answerSeq || m.type !== "delta") return;
+    if (seq !== answerSeq) return;
+    if (m.type === "usage") {
+      $("ai-usage").textContent = `This answer: ${m.input_tokens.toLocaleString()} input + ${m.output_tokens.toLocaleString()} output tokens (provider reported).`;
+      return;
+    }
+    if (m.type !== "delta") return;
     if (first) {
       out.textContent = "";
       first = false;
@@ -1151,6 +1207,12 @@ async function ask() {
 }
 
 function wireAnswers() {
+  $("btn-haiku").addEventListener("click", () => {
+    settings.ai.provider = "claude";
+    saveProviderField("model", "claude-haiku-5-5");
+    loadAiUI();
+    checkModel();
+  });
   $("btn-answers").addEventListener("click", toggleAnswers);
   $("btn-ask").addEventListener("click", ask);
   $("ask-input").addEventListener("keydown", (e) => {
@@ -1197,23 +1259,16 @@ function wireAnswers() {
         o.value = id;
         list.appendChild(o);
       }
-      $("ai-key-state").textContent = ids.length
+      $("ai-model-state").textContent = ids.length
         ? `${ids.length} models found. Pick one in the Model field.`
         : "The server listed no models.";
     } catch (err) {
-      $("ai-key-state").textContent = String(err);
+      $("ai-model-state").textContent = String(err);
     }
     b.disabled = false;
   });
-  $("btn-ai-key").addEventListener("click", async () => {
-    try {
-      await invoke("llm_set_key", { id: providerCfg().id, key: $("ai-key").value });
-      $("ai-key").value = "";
-      await refreshKeyState();
-    } catch (err) {
-      $("ai-key-state").textContent = "Could not save the key: " + err;
-    }
-  });
+  $("btn-ai-key").addEventListener("click", () => manageKey(false));
+  $("btn-ai-key-delete").addEventListener("click", () => manageKey(true));
   $("ai-include-script").addEventListener("change", (e) => {
     settings.ai.includeScript = e.target.checked;
     saveSettingsSoon();
@@ -1479,9 +1534,40 @@ async function init() {
   applyUI();
   setStealthUI(true);
   wireControls();
+  for (const toolbar of document.querySelectorAll("[data-format-target]")) {
+    const target = $(toolbar.dataset.formatTarget);
+    toolbar.addEventListener("mousedown", (e) => e.preventDefault());
+    toolbar.addEventListener("click", (e) => {
+      const button = e.target.closest("button[data-format]");
+      if (button) applyFormat(target, button.dataset.format);
+    });
+    target.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        applyFormat(target, "bold");
+      }
+    });
+  }
 
   await listen("hotkey", (e) => handleHotkey(e.payload));
   await listen("asr", (e) => onAsr(e.payload));
+  let lastMicSignal = 0;
+  await listen("asr-level", (e) => {
+    if (!voiceOn || e.payload.source !== "mic") return;
+    lastMicSignal = performance.now();
+    $("mic-level").value = Math.min(1, e.payload.rms * 8);
+    $("mic-state").textContent = e.payload.rms >= 0.008 ? "Audio detected" : "Quiet";
+  });
+  await listen("asr-timing", (e) => {
+    if (voiceOn) $("voice-timing").textContent = `Recognition: ${e.payload} ms`;
+  });
+  setInterval(() => {
+    if (!voiceOn) return;
+    if (performance.now() - lastMicSignal > 2000) {
+      $("mic-level").value = 0;
+      $("mic-state").textContent = "Waiting for microphone audio";
+    }
+  }, 1000);
   await listen("asr-error", (e) => {
     if (e.payload.source === "mic") {
       setVoice(false);

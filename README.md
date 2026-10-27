@@ -126,3 +126,64 @@ Defaults:
 The window is hidden from the taskbar, but the tray icon and the hide/show
 hotkey can both bring it back. The window's position and size are restored
 on the next launch.
+
+
+## Reading and voice feedback
+
+Paste new and Edit now offer **Bold** (Ctrl+B / Cmd+B) and **Title** buttons.
+These insert Markdown, which is rendered while reading and preserved when saved.
+A title on its own line no longer needs a blank line before the following paragraph.
+
+Voice shows a live microphone level, whether audio is arriving, the most recent
+recognized phrase, and the duration of the last recognition pass. Audio detected
+means input is arriving, not necessarily that speech matched the script. Recognition
+timing measures decoding only, not total microphone-to-highlight latency. A quiet
+meter can mean silence, a muted mic, or the wrong Windows default input device.
+
+New settings default to Whisper Tiny; existing model selections are preserved.
+Choose Keys > Speech recognition > Tiny for a lighter reading setup, then choose
+English or Spanish rather than Detect when the language is known. Tiny English is
+also available and always recognizes English. Download sizes are not runtime RAM:
+whisper.cpp lists roughly 273 MB memory for Tiny and 388 MB for Base. Faster results
+still depend on hardware, accent, and input quality. Settings apply when capture
+restarts. The reader checks for fresh speech more frequently and performs a final
+recognition pass when speech pauses; it still uses chunked recognition.
+
+[Vosk](https://alphacephei.com/vosk/) is a possible future streaming alternative;
+its small English model is 40 MB and small models typically need about 300 MB RAM.
+It is not integrated here. Benchmark recognition quality before replacing Whisper.
+[Whisper resource reference](https://github.com/ggml-org/whisper.cpp)
+
+## Claude and API consumption
+
+For an Anthropic API key, open Answers > Setup > Use Claude Haiku 5.5, save your
+key there, then use List to verify available models. Keys stay in the OS keychain.
+Use **Delete saved key** in the same panel to remove the selected provider's
+credential. The backend verifies that the keychain reports no entry before showing
+"Deleted and verified". Storage errors do not count as proof of deletion; retry if
+verification fails. Saving or deleting also clears the key input field. Deletion
+does not revoke the key at the provider, remove clipboard copies, guarantee erasure
+of process-memory remnants, or undo requests already sent. Revoke the key in the
+provider's console if you want it disabled everywhere.
+An existing provider/model choice is not changed until you choose another one.
+Haiku is used for suggested answers; voice-follow recognition remains local.
+Reading alone sends no Claude requests and consumes no API tokens.
+
+The answer panel now shows Anthropic-reported input and output token counts for
+the current request. Usage may be incomplete if a stream is interrupted. Other
+providers may omit counts. This is not a billing ledger or an account balance.
+Sending the full script adds input tokens on every answer; uncheck that option
+when the notes and question provide enough context.
+
+As checked on October 27, 2026, direct Claude API Haiku 5.5 pricing is $0.10 per
+million input tokens and $0.50 per million output tokens for prompts up to 100,000
+tokens. Above that threshold the rates are $0.50 and $2.50 respectively. An answer
+with 2,000 input and 300 output tokens costs about $0.00035 at the lower tier;
+1,000 such answers cost about $0.35, excluding extra features or provider-specific
+charges. Use your provider's billing console for actual spending and limits.
+[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+
+Development checks: `node --test tests/reading.test.js` and
+`cargo check --manifest-path src-tauri/Cargo.toml`. Live microphone accuracy,
+end-to-end latency, and account-specific Claude access require a local reading
+session and an API request respectively; automated checks do not establish them.

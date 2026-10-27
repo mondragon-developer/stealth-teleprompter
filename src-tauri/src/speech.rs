@@ -41,7 +41,7 @@ mod imp {
         FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
     };
 
-    const MODELS: &[&str] = &["tiny", "base", "small"];
+    const MODELS: &[&str] = &["tiny", "tiny.en", "base", "small"];
     const TARGET_RATE: usize = 16_000;
     // Below this RMS a window is treated as silence and never reaches
     // whisper, which otherwise hallucinates filler like "Thank you." on
@@ -206,6 +206,7 @@ mod imp {
         let mut slot = speech.mic.lock().unwrap();
         *slot = None;
         let ctx = load_model(&app, &speech, &model)?;
+        let language = if model.ends_with(".en") { "en".to_string() } else { language };
         let prompt = speech.prompt.clone();
         let a = app.clone();
         *slot = Some(spawn_capture(app, "mic", ctx, move |state, stop, buf, rate| {
@@ -229,6 +230,7 @@ mod imp {
         let mut slot = speech.sys.lock().unwrap();
         *slot = None;
         let ctx = load_model(&app, &speech, &model)?;
+        let language = if model.ends_with(".en") { "en".to_string() } else { language };
         let transcript = speech.transcript.clone();
         let a = app.clone();
         *slot = Some(spawn_capture(app, "sys", ctx, move |state, stop, buf, rate| {
@@ -364,14 +366,31 @@ mod imp {
         T: SizedSample,
         f32: FromSample<T>,
     {
+        let meter_app = app.clone();
+        let max_samples = config.sample_rate as usize * 16;
+        let mut meter_at = Instant::now();
         device
             .build_input_stream(
                 config,
                 move |data: &[T], _: &cpal::InputCallbackInfo| {
                     let mut b = buf.lock().unwrap();
+                    let start = b.len();
                     for frame in data.chunks(channels.max(1)) {
                         let sum: f32 = frame.iter().map(|s| f32::from_sample(*s)).sum();
                         b.push(sum / frame.len() as f32);
+                    }
+                    let level = rms(&b[start..]);
+                    if b.len() > max_samples {
+                        let excess = b.len() - max_samples;
+                        b.drain(..excess);
+                    }
+                    drop(b);
+                    // Independent of inference: the meter keeps moving while Whisper works.
+                    if source == "mic" && meter_at.elapsed() >= Duration::from_millis(100) {
+                        meter_at = Instant::now();
+                        let _ = meter_app.emit("asr-level", serde_json::json!({
+                            "source": source, "rms": level,
+                        }));
                     }
                 },
                 move |e| {
@@ -501,8 +520,11 @@ mod imp {
         prompt: Arc<Mutex<String>>,
     ) {
         let window = rate * 4;
+        let mut was_speaking = false;
+        let mut next_poll = Duration::from_millis(100);
         while !stop.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_millis(250));
+            std::thread::sleep(next_poll);
+            next_poll = Duration::from_millis(100);
             let raw = {
                 let mut b = buf.lock().unwrap();
                 if b.len() > window {
@@ -515,13 +537,27 @@ mod imp {
                 continue;
             }
             let tail = &raw[raw.len().saturating_sub(rate / 2)..];
-            if rms(tail) < SILENCE_RMS {
+            let speaking = rms(tail) >= SILENCE_RMS;
+            // One final pass at a pause picks up words spoken during inference.
+            let flush_tail = was_speaking && !speaking;
+            was_speaking = speaking;
+            if !speaking && !flush_tail {
                 continue;
             }
             let audio = resample(&raw, rate);
             let p = prompt.lock().unwrap().clone();
+            let started = Instant::now();
             if let Some(text) = transcribe(&mut state, &audio, &language, &p) {
-                let _ = app.emit("asr", AsrText { source: "mic", text });
+                if !stop.load(Ordering::SeqCst) {
+                    let _ = app.emit("asr", AsrText { source: "mic", text });
+                }
+            }
+            // Target a 250 ms cadence instead of adding 250 ms after every decode.
+            next_poll = Duration::from_millis(250)
+                .saturating_sub(started.elapsed())
+                .max(Duration::from_millis(25));
+            if !stop.load(Ordering::SeqCst) {
+                let _ = app.emit("asr-timing", started.elapsed().as_millis() as u64);
             }
         }
     }

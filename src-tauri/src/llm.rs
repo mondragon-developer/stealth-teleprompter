@@ -12,11 +12,33 @@ use serde_json::{json, Value};
 use tauri::ipc::Channel;
 
 const KEYRING_SERVICE: &str = "screen-script";
+#[cfg(desktop)]
+static KEY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 // Sequence number of the newest answer request. An older stream still
 // running when a new question is asked stops reading, which also stops the
 // provider generating (and billing) tokens nobody will see.
 static LATEST: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(all(test, desktop))]
+mod credential_tests {
+    use super::delete_and_verify;
+    use keyring::Error;
+
+    #[test]
+    fn deletion_requires_an_absent_credential() {
+        assert!(delete_and_verify(|| Ok(()), || Err(Error::NoEntry)).is_ok());
+        assert!(delete_and_verify(|| Err(Error::NoEntry), || Err(Error::NoEntry)).is_ok());
+        assert!(delete_and_verify(|| Ok(()), || Ok("dummy-test-key".into())).is_err());
+    }
+
+    #[test]
+    fn keychain_errors_never_report_verified_deletion() {
+        let failure = || Error::PlatformFailure(Box::new(std::io::Error::other("test failure")));
+        assert!(delete_and_verify(|| Err(failure()), || panic!("must not read after failed delete")).is_err());
+        assert!(delete_and_verify(|| Ok(()), || Err(failure())).is_err());
+    }
+}
 
 #[derive(Deserialize)]
 pub struct Provider {
@@ -31,6 +53,7 @@ pub struct Provider {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AnswerEvent {
     Delta { text: String },
+    Usage { input_tokens: u64, output_tokens: u64 },
     Done,
 }
 
@@ -52,13 +75,11 @@ fn read_key(_id: &str) -> Option<String> {
 #[cfg(desktop)]
 #[tauri::command]
 pub fn llm_set_key(id: String, key: String) -> Result<(), String> {
+    let _guard = KEY_LOCK.lock().map_err(|_| "key storage lock failed")?;
     let entry = key_entry(&id)?;
     let key = key.trim();
     if key.is_empty() {
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.to_string()),
-        }
+        delete_and_verify(|| entry.delete_credential(), || entry.get_password())
     } else {
         entry.set_password(key).map_err(|e| e.to_string())
     }
@@ -71,9 +92,42 @@ pub fn llm_set_key(id: String, key: String) -> Result<(), String> {
     Err("key storage is desktop only".into())
 }
 
+#[cfg(desktop)]
+fn delete_and_verify(
+    delete: impl FnOnce() -> Result<(), keyring::Error>,
+    read: impl FnOnce() -> Result<String, keyring::Error>,
+) -> Result<(), String> {
+    match delete() {
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(e) => return Err(format!("Could not delete saved key: {e}")),
+    }
+    match read() {
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(_) => Err("Deletion could not be verified: a saved key still exists. Try again.".into()),
+        Err(e) => Err(format!("Could not verify deletion: {e}. Try again.")),
+    }
+}
+
 #[tauri::command]
-pub fn llm_has_key(id: String) -> bool {
-    read_key(&id).is_some()
+pub fn llm_delete_key(id: String) -> Result<(), String> {
+    llm_set_key(id, String::new())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+pub fn llm_has_key(id: String) -> Result<bool, String> {
+    let _guard = KEY_LOCK.lock().map_err(|_| "key storage lock failed")?;
+    match key_entry(&id)?.get_password() {
+        Ok(_) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(e) => Err(format!("Could not check saved key: {e}")),
+    }
+}
+
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn llm_has_key(_id: String) -> Result<bool, String> {
+    Err("key storage is desktop only".into())
 }
 
 fn client() -> Result<reqwest::Client, String> {
@@ -230,8 +284,8 @@ pub async fn llm_answer(
             "messages": [{ "role": "user", "content": prompt }],
         });
         // Answers are needed within seconds while someone waits, so ask for
-        // low effort. Haiku rejects the effort parameter.
-        if !p.model.contains("haiku") {
+        // low effort. Older Haiku models reject the effort parameter.
+        if !p.model.contains("haiku") || p.model == "claude-haiku-5-5" {
             body["output_config"] = json!({ "effort": "low" });
         }
         let mut rb = anthropic_request(&p, &format!("{}/v1/messages", base(&p)), true)?;
@@ -259,6 +313,8 @@ pub async fn llm_answer(
     let resp = check(resp).await?;
     let mut stream = resp.bytes_stream();
     let mut raw: Vec<u8> = Vec::new();
+    let mut input_tokens = 0;
+    let mut output_tokens = 0;
     while let Some(chunk) = stream.next().await {
         if LATEST.load(Ordering::SeqCst) != seq {
             return Ok(());
@@ -278,6 +334,17 @@ pub async fn llm_answer(
             let Ok(v) = serde_json::from_str::<Value>(data) else { continue };
             if let Some(msg) = v.pointer("/error/message").and_then(|m| m.as_str()) {
                 return Err(msg.to_string());
+            }
+            if anthropic {
+                if let Some(usage) = v.pointer("/message/usage").or_else(|| v.get("usage")) {
+                    if let Some(n) = usage.get("input_tokens").and_then(Value::as_u64) {
+                        input_tokens = n;
+                    }
+                    if let Some(n) = usage.get("output_tokens").and_then(Value::as_u64) {
+                        output_tokens = n;
+                    }
+                    let _ = on_event.send(AnswerEvent::Usage { input_tokens, output_tokens });
+                }
             }
             let text = if anthropic {
                 if v.get("type").and_then(|t| t.as_str()) == Some("content_block_delta")

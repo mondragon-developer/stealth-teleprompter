@@ -760,3 +760,11 @@ input[type="range"] {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.format-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--dim); }
+#editor-tools { position: absolute; top: 8px; left: 10px; right: 10px; }
+body.editing #editor { margin-top: 65px; min-width: 0; }
+#voice-status { border-radius: 8px; padding: 6px 10px; max-width: min(60%, 520px); }
+#voice-heard { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+#voice-timing { font-size: 10px; }
+#mic-level { width: 65px; height: 12px; vertical-align: middle; }

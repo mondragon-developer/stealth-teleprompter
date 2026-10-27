@@ -554,6 +554,7 @@ pub fn run() {
             speech::transcript_recent,
             speech::transcript_clear,
             llm::llm_set_key,
+            llm::llm_delete_key,
             llm::llm_has_key,
             llm::llm_models,
             llm::llm_loaded,

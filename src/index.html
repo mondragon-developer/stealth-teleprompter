@@ -27,10 +27,15 @@
         <div id="viewport">
           <div id="script-text"></div>
         </div>
+        <div id="editor-tools" class="format-tools hidden" data-format-target="editor"><button type="button" data-format="bold" title="Bold selection (Ctrl+B)"><strong>Bold</strong></button> <button type="button" data-format="heading">Title</button> <span>Select text to format. Markdown is saved with your script.</span></div>
         <textarea id="editor" class="hidden" spellcheck="false" placeholder="Edit your script here. Ctrl+Enter saves, Esc cancels."></textarea>
         <div class="focus-line"></div>
         <div id="countdown" class="hidden"></div>
-        <div id="voice-status" class="hidden"></div>
+        <div id="voice-status" class="hidden">
+          <div><meter id="mic-level" min="0" max="1" value="0" aria-label="Microphone input level"></meter> <span id="mic-state">Waiting for microphone</span></div>
+          <div id="voice-message" role="status"></div>
+          <div id="voice-heard"></div><div id="voice-timing"></div>
+        </div>
         <aside id="answer-pane" class="hidden">
           <div class="pane-head">
             <span>Answers</span>
@@ -53,6 +58,7 @@
           </div>
           <button id="btn-ask" class="primary">Find answer</button>
           <p id="ask-hint" class="note"></p>
+          <p id="ai-usage" class="note" role="status"></p>
           <div id="answer-out" aria-live="polite"></div>
           <div id="ai-setup" class="hidden">
             <label>Provider
@@ -72,13 +78,18 @@
               </span>
             </label>
             <datalist id="ai-model-list"></datalist>
+            <p id="ai-model-state" class="note" role="status"></p>
+            <button id="btn-haiku">Use Claude Haiku 5.5</button>
+            <p class="note">Voice follow is local and costs $0 in API tokens. Only Find answer sends text to the AI. Haiku 5.5: $0.10 input / $0.50 output per million tokens up to 100K input; above that, $0.50 / $2.50 (checked Oct 27, 2026). Example: 2,000 input + 300 output = about $0.00035. Provider billing is authoritative.</p>
             <label>API key
               <span class="inline">
-                <input id="ai-key" type="password" spellcheck="false" placeholder="not needed for LM Studio" />
+                <input id="ai-key" type="password" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="not needed for LM Studio" />
                 <button id="btn-ai-key">Save</button>
               </span>
             </label>
-            <p id="ai-key-state" class="note"></p>
+            <button id="btn-ai-key-delete" type="button">Delete saved key</button>
+            <p id="ai-key-state" class="note" role="status" aria-live="polite"></p>
+            <p class="note">Delete removes this provider's key from this computer and verifies it is absent. It does not revoke the key at the provider or undo requests already sent. To disable the key everywhere, revoke it in your provider's console.</p>
             <label class="check"><input id="ai-include-script" type="checkbox" /> Send the current script as context</label>
             <label>Notes for the model (facts, numbers, likely questions)
               <textarea id="ai-notes" spellcheck="false"></textarea>
@@ -145,11 +156,12 @@
         <button id="hk-reset">Reset defaults</button>
         <div id="speech-setup">
           <h4>Speech recognition</h4>
-          <p>Voice and Listen run a Whisper model on this computer; no audio leaves it.</p>
+          <p>Voice and Listen run a Whisper model on this computer; no audio leaves it. Start with Tiny and choose your spoken language for predictable recognition. Model/language changes apply next time you start Voice or Listen.</p>
           <div class="hk-row">
             <span class="hk-label">Model</span>
             <select id="asr-model">
-              <option value="tiny">Tiny - 75 MB, fastest</option>
+              <option value="tiny.en">Tiny English - 75 MB, English only</option>
+              <option value="tiny">Tiny - 75 MB, recommended for fast reading</option>
               <option value="base">Base - 142 MB, balanced</option>
               <option value="small">Small - 466 MB, most accurate</option>
             </select>
@@ -173,6 +185,7 @@
         <div class="modal-card">
           <h3>New script</h3>
           <input id="paste-name" type="text" placeholder="Script name" />
+          <div class="format-tools" data-format-target="paste-content"><button type="button" data-format="bold" title="Bold selection (Ctrl+B)"><strong>Bold</strong></button> <button type="button" data-format="heading">Title</button> <span>Select text to format. Markdown is saved with your script.</span></div>
           <textarea id="paste-content" placeholder="Paste your script here"></textarea>
           <div class="modal-actions">
             <button id="paste-cancel">Cancel</button>
